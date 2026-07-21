@@ -27,7 +27,9 @@ const store = {
   },
   getClient(id) { return db.clients[id] || null; },
   getClientByWa(waNumber) {
-    return Object.values(db.clients).find(c => c.waNumber === waNumber) || null;
+    const matches = Object.values(db.clients).filter(c => c.waNumber === waNumber);
+    // Prefer a fully-connected client (has IG creds) over a seed/placeholder.
+    return matches.find(c => c.igUserId && c.pageToken) || matches[0] || null;
   },
   listClients() { return Object.values(db.clients); },
 
