@@ -16,7 +16,7 @@ router.get('/connect', (req, res) => {
   const state = Math.random().toString(36).slice(2);
   const url =
     `https://www.facebook.com/${cfg.meta.graph}/dialog/oauth` +
-    `?client_id=${cfg.meta.appId}` +
+    `?client_id=${cfg.ig.appId}` +
     `&redirect_uri=${encodeURIComponent(REDIRECT)}` +
     `&state=${state}` +
     `&scope=${encodeURIComponent(cfg.ig.scopes.join(','))}`;

@@ -28,15 +28,15 @@ async function gql(pathAndQuery, { method = 'GET', body } = {}) {
 // --- OAuth: exchange the short code from Facebook Login for a long-lived token ---
 async function exchangeCodeForToken(code, redirectUri) {
   const short = await gql(
-    `oauth/access_token?client_id=${cfg.meta.appId}` +
-    `&client_secret=${cfg.meta.appSecret}` +
+    `oauth/access_token?client_id=${cfg.ig.appId}` +
+    `&client_secret=${cfg.ig.appSecret}` +
     `&redirect_uri=${encodeURIComponent(redirectUri)}` +
     `&code=${encodeURIComponent(code)}`
   );
   // upgrade to long-lived (~60 days; refreshable)
   const long = await gql(
     `oauth/access_token?grant_type=fb_exchange_token` +
-    `&client_id=${cfg.meta.appId}&client_secret=${cfg.meta.appSecret}` +
+    `&client_id=${cfg.ig.appId}&client_secret=${cfg.ig.appSecret}` +
     `&fb_exchange_token=${short.access_token}`
   );
   return long.access_token;

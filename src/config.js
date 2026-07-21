@@ -11,8 +11,12 @@ const cfg = {
     graph: process.env.META_GRAPH_VERSION || 'v21.0',
   },
   ig: {
+    // Instagram publishing lives in its own Meta app ("balabot Social").
+    // Falls back to the generic META_APP_* if a dedicated one isn't set.
+    appId: process.env.IG_APP_ID || process.env.META_APP_ID,
+    appSecret: process.env.IG_APP_SECRET || process.env.META_APP_SECRET,
     scopes: (process.env.IG_OAUTH_SCOPES ||
-      'instagram_basic,instagram_content_publish,pages_show_list,business_management').split(','),
+      'instagram_basic,instagram_content_publish,pages_show_list,business_management,pages_read_engagement').split(','),
   },
   wa: {
     phoneNumberId: process.env.WA_PHONE_NUMBER_ID,
