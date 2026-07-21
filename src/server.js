@@ -9,6 +9,15 @@ app.use('/public', express.static(path.join(__dirname, '..', 'public')));
 app.get('/', (req, res) => res.send('Social Autopilot is running. Endpoints: /onboarding  /webhook/whatsapp  /dashboard'));
 app.get('/health', (req, res) => res.json({ ok: true, graph: cfg.meta.graph, time: Date.now() }));
 
+
+// Seed clients from SEED_CLIENTS env (survives free-tier filesystem resets)
+try {
+  const seed = JSON.parse(process.env.SEED_CLIENTS || '[]');
+  const store = require('./db');
+  seed.forEach(c => store.upsertClient(c));
+  if (seed.length) console.log('Seeded ' + seed.length + ' client(s) from SEED_CLIENTS');
+} catch (e) { console.error('SEED_CLIENTS parse error:', e.message); }
+
 app.use('/onboarding', require('./routes/onboarding'));
 app.use('/webhook/whatsapp', require('./routes/whatsapp'));
 app.use('/dashboard', require('./routes/dashboard'));
