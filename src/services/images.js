@@ -1,52 +1,76 @@
 // ============================================================
-//  Image pipeline.
-//  Input: Buffer (client's WhatsApp photo) -> Output: public https URL
-//  that Instagram/WhatsApp can fetch.
-//    enhance(buffer, brand)  -> professional version (OpenAI gpt-image edit)
-//    hostPublicly(buffer)    -> public URL under /public
-//  IMAGE_PROVIDER=openai turns on real enhancement. 'none' = pass-through.
+//  Image pipeline: Buffer (client's WhatsApp photo) -> public https URL.
+//  enhance() uses OpenAI gpt-image (image-to-image) and PRESERVES the
+//  original aspect ratio + dimensions. IMAGE_PROVIDER=none = pass-through.
 // ============================================================
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const cfg = require('../config');
+let sharp = null;
+try { sharp = require('sharp'); } catch (_) { console.warn('sharp not available'); }
 
 const PUB_DIR = path.join(__dirname, '..', '..', 'public');
 fs.mkdirSync(PUB_DIR, { recursive: true });
 
 function enhancePrompt(brand) {
   return `Re-render THIS EXACT photo as if it were captured by a professional photographer using a high-end camera.` +
-    ` Keep the subject, product, layout, shapes, colors, textures, labels and every detail EXACTLY as in the original — do NOT change, add, remove, move or reimagine anything.` +
+    ` Keep the subject, product, layout, shapes, colors, textures, labels and every detail EXACTLY as in the original — do NOT change, add, remove, move or reimagine anything, and KEEP the same framing and aspect ratio.` +
     ` Only improve the photographic quality: natural realistic studio-grade lighting, crisp sharp focus, pleasing depth of field, accurate true-to-life colors, and clean professional composition.` +
     ` The result MUST look like a REAL, fully photorealistic photograph — authentic and believable, NOT AI-generated, NOT stylized, NOT illustrated, NOT cartoonish. Maximum realism and fidelity to the original.`;
+}
+
+// pick the closest gpt-image output size to the original orientation
+function pickSize(w, h) {
+  if (!w || !h) return '1024x1024';
+  if (h > w * 1.1) return '1024x1536'; // portrait (e.g. 9:16 -> nearest tall)
+  if (w > h * 1.1) return '1536x1024'; // landscape
+  return '1024x1024';                  // square
 }
 
 async function enhanceOpenAI(buffer, brand) {
   const key = process.env.OPENAI_API_KEY;
   if (!key) return buffer;
+
+  // read original dimensions + normalize to PNG for the API
+  let width = null, height = null, pngBuf = buffer;
+  if (sharp) {
+    try {
+      const meta = await sharp(buffer).metadata();
+      width = meta.width; height = meta.height;
+      pngBuf = await sharp(buffer).png().toBuffer();
+    } catch (e) { console.error('sharp meta failed:', e.message); }
+  }
+
   const form = new FormData();
   form.append('model', 'gpt-image-1');
   form.append('prompt', enhancePrompt(brand));
-  form.append('size', '1024x1024');
+  form.append('size', pickSize(width, height));
   form.append('quality', 'high');
   form.append('input_fidelity', 'high');
-  form.append('image', new Blob([buffer], { type: 'image/png' }), 'photo.png');
+  form.append('image', new Blob([pngBuf], { type: 'image/png' }), 'photo.png');
+
   const res = await fetch('https://api.openai.com/v1/images/edits', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}` },
-    body: form,
+    method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: form,
   });
   const j = await res.json();
   if (j.error) { console.error('OpenAI image error:', j.error.message); return buffer; }
   const b64 = j.data?.[0]?.b64_json;
-  return b64 ? Buffer.from(b64, 'base64') : buffer;
+  if (!b64) return buffer;
+  let out = Buffer.from(b64, 'base64');
+
+  // resize the result back to the EXACT original dimensions (preserve ratio)
+  if (sharp && width && height) {
+    try { out = await sharp(out).resize(width, height, { fit: 'cover' }).png().toBuffer(); }
+    catch (e) { console.error('resize-back failed:', e.message); }
+  }
+  return out;
 }
 
 async function enhance(buffer, brand) {
-  try {
-    if (cfg.images.provider === 'openai') return await enhanceOpenAI(buffer, brand);
-  } catch (e) { console.error('enhance failed, using original:', e.message); }
-  return buffer; // pass-through
+  try { if (cfg.images.provider === 'openai') return await enhanceOpenAI(buffer, brand); }
+  catch (e) { console.error('enhance failed, using original:', e.message); }
+  return buffer;
 }
 
 function hostPublicly(buffer, ext = 'png') {
