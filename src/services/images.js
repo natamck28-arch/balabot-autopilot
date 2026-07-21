@@ -15,10 +15,10 @@ const PUB_DIR = path.join(__dirname, '..', '..', 'public');
 fs.mkdirSync(PUB_DIR, { recursive: true });
 
 function enhancePrompt(brand) {
-  const style = brand?.style ? ` בסגנון: ${brand.style}.` : '';
-  return `Transform this into a professional, high-end social-media photograph for the business "${brand?.businessName || ''}".` +
-    ` Dramatically improve lighting, sharpness, color and composition so it looks like it was shot by a professional photographer.` +
-    ` Keep it realistic and TRUE to the original subject — do not invent or replace the product. Clean, appetizing, premium look.${style}`;
+  return `Re-render THIS EXACT photo as if it were captured by a professional photographer using a high-end camera.` +
+    ` Keep the subject, product, layout, shapes, colors, textures, labels and every detail EXACTLY as in the original — do NOT change, add, remove, move or reimagine anything.` +
+    ` Only improve the photographic quality: natural realistic studio-grade lighting, crisp sharp focus, pleasing depth of field, accurate true-to-life colors, and clean professional composition.` +
+    ` The result MUST look like a REAL, fully photorealistic photograph — authentic and believable, NOT AI-generated, NOT stylized, NOT illustrated, NOT cartoonish. Maximum realism and fidelity to the original.`;
 }
 
 async function enhanceOpenAI(buffer, brand) {
@@ -28,6 +28,8 @@ async function enhanceOpenAI(buffer, brand) {
   form.append('model', 'gpt-image-1');
   form.append('prompt', enhancePrompt(brand));
   form.append('size', '1024x1024');
+  form.append('quality', 'high');
+  form.append('input_fidelity', 'high');
   form.append('image', new Blob([buffer], { type: 'image/png' }), 'photo.png');
   const res = await fetch('https://api.openai.com/v1/images/edits', {
     method: 'POST',
