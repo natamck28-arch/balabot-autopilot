@@ -75,3 +75,19 @@ router.get('/seed-client', auth, (req, res) => {
   });
   res.json({ ok: true, client: { id: c.id, waNumber: c.waNumber, businessName: c.businessName } });
 });
+
+// (appended) Export connected (non-demo) clients as a SEED_CLIENTS-ready JSON
+// string. Paste the value into the SEED_CLIENTS env var so the Instagram
+// connection (incl. pageToken) survives free-tier redeploys/restarts.
+router.get('/export-seed', auth, (req, res) => {
+  const store = require('../db');
+  const connected = store.listClients().filter(c => c.igUserId && c.pageToken);
+  const seed = connected.map(c => ({
+    id: c.id, igUserId: c.igUserId, pageId: c.pageId, pageToken: c.pageToken,
+    igUsername: c.igUsername, igAvatar: c.igAvatar,
+    businessName: c.businessName, waNumber: c.waNumber,
+    language: c.language, style: c.style, voiceRules: c.voiceRules,
+    hashtags: c.hashtags, frequency: c.frequency, status: c.status || 'active',
+  }));
+  res.type('application/json').send(JSON.stringify(seed));
+});
