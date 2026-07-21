@@ -1,0 +1,20 @@
+{
+  "name": "social-autopilot",
+  "version": "0.1.0",
+  "description": "Automated Instagram management service: WhatsApp bot intake, AI image enhancement + captions, official Instagram Graph API publishing. Multi-client.",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test:flow": "node scripts/test-conversation.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "express": "^4.19.2",
+    "dotenv": "^16.4.5"
+  },
+  "optionalDependencies": {
+    "stripe": "^16.0.0"
+  }
+}

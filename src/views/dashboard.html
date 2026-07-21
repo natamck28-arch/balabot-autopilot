@@ -1,0 +1,34 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Autopilot · Dashboard</title>
+<style>
+ body{font-family:system-ui,sans-serif;background:#0d0e1a;color:#e8e8f0;margin:0;padding:24px}
+ h1{font-size:22px} .stats{display:flex;gap:14px;margin:16px 0}
+ .stat{background:#181a2e;border:1px solid #262845;border-radius:14px;padding:16px 20px;min-width:120px}
+ .stat b{font-size:26px;display:block} .stat span{color:#8a8caf;font-size:13px}
+ table{width:100%;border-collapse:collapse;margin-top:10px;background:#141527;border-radius:12px;overflow:hidden}
+ th,td{text-align:left;padding:11px 14px;border-bottom:1px solid #23253f;font-size:14px}
+ th{color:#9a9cc0;font-weight:600} .badge{padding:3px 9px;border-radius:20px;font-size:12px}
+ .active{background:#123d2a;color:#4ade80} .pending{background:#3d3312;color:#fbbf24}
+ h2{margin-top:30px;font-size:16px;color:#b8b9d0}
+</style></head><body>
+<h1>📊 Social Autopilot — Dashboard</h1>
+<div class="stats">
+  <div class="stat"><b id="cCount">–</b><span>Clients</span></div>
+  <div class="stat"><b id="aCount">–</b><span>Active</span></div>
+  <div class="stat"><b id="pCount">–</b><span>Posts published</span></div>
+</div>
+<h2>Clients</h2>
+<table><thead><tr><th>Business</th><th>Instagram</th><th>WhatsApp</th><th>Freq</th><th>Status</th></tr></thead>
+<tbody id="clients"></tbody></table>
+<h2>Recent posts</h2>
+<table><thead><tr><th>Client</th><th>Caption</th><th>When</th></tr></thead><tbody id="posts"></tbody></table>
+<script>
+const token=new URLSearchParams(location.search).get('token')||'';
+fetch('/dashboard/api/clients',{headers:{'x-admin-token':token}}).then(r=>r.json()).then(d=>{
+ const c=d.clients||[],p=d.posts||[];
+ cCount.textContent=c.length; aCount.textContent=c.filter(x=>x.status==='active').length; pCount.textContent=p.length;
+ clients.innerHTML=c.map(x=>`<tr><td>${x.businessName||'—'}</td><td>@${x.igUsername||''}</td><td>${x.waNumber||'—'}</td><td>${x.frequency||'—'}</td>
+   <td><span class="badge ${x.status==='active'?'active':'pending'}">${x.status||''}</span></td></tr>`).join('')||'<tr><td colspan=5>No clients yet</td></tr>';
+ posts.innerHTML=p.map(x=>`<tr><td>${x.clientId}</td><td>${(x.caption||'').slice(0,60)}…</td><td>${new Date(x.at).toLocaleString()}</td></tr>`).join('')||'<tr><td colspan=3>No posts yet</td></tr>';
+});
+</script></body></html>

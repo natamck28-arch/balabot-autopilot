@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: balabot-autopilot
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: PUBLIC_URL
+        sync: false        # set to the Render URL after first deploy, e.g. https://balabot-autopilot.onrender.com
+      - key: ADMIN_TOKEN
+        generateValue: true
+      - key: META_APP_ID
+        value: "1004787808992538"
+      - key: META_APP_SECRET
+        sync: false
+      - key: META_GRAPH_VERSION
+        value: v21.0
+      - key: WA_PHONE_NUMBER_ID
+        value: "1201614033040426"
+      - key: WA_ACCESS_TOKEN
+        sync: false
+      - key: WA_VERIFY_TOKEN
+        sync: false
+      - key: WA_BUSINESS_NUMBER
+        value: "+15551693643"
+      - key: AI_PROVIDER
+        value: none

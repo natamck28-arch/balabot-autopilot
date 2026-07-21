@@ -1,0 +1,27 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Your brand</title>
+<style>
+ body{font-family:system-ui,sans-serif;background:#0f1020;color:#eee;margin:0;padding:30px;display:flex;justify-content:center}
+ form{background:#191a2e;padding:32px;border-radius:18px;max-width:520px;width:100%}
+ h1{margin-top:0} label{display:block;margin:14px 0 4px;color:#cfd0e6;font-size:14px}
+ input,textarea,select{width:100%;box-sizing:border-box;padding:11px;border-radius:10px;border:1px solid #33344f;background:#10101f;color:#fff}
+ button{margin-top:22px;width:100%;padding:14px;border:0;border-radius:12px;font-weight:700;color:#fff;background:linear-gradient(135deg,#c13584,#f56040);cursor:pointer}
+ .row{display:flex;gap:12px} .row>div{flex:1}
+</style></head><body>
+<form method="post" action="/onboarding/brand">
+  <h1>Tell us about your brand</h1>
+  <input type="hidden" name="id" id="id">
+  <label>Business name</label><input name="businessName" required placeholder="Bella's Bakery">
+  <label>WhatsApp number (with country code)</label><input name="waNumber" required placeholder="+1 555 123 4567">
+  <div class="row">
+    <div><label>Language</label><input name="language" value="English"></div>
+    <div><label>Posts per week</label>
+      <select name="frequency"><option>3</option><option>5</option><option>7</option><option>Daily</option></select></div>
+  </div>
+  <label>Style / vibe</label><input name="style" placeholder="warm, cozy, artisanal">
+  <label>Do's &amp; don'ts (voice rules)</label><textarea name="voiceRules" rows="2" placeholder="No emojis overload, never mention competitors"></textarea>
+  <label>Default hashtags</label><input name="hashtags" placeholder="#bakery #freshbread #cityname">
+  <button>Finish setup ✅</button>
+</form>
+<script>document.getElementById('id').value=new URLSearchParams(location.search).get('id')||'';</script>
+</body></html>
