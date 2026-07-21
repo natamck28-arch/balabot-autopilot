@@ -46,3 +46,18 @@ router.get('/last-inbound', (req, res) => {
     return res.status(401).json({ error: 'unauthorized' });
   res.json({ count: (global.__lastInbound || []).length, items: global.__lastInbound || [] });
 });
+
+// (appended) Subscribe THIS app to the WABA's webhooks — the step that actually
+// makes inbound messages flow to our /webhook/whatsapp. Uses the permanent token.
+const WABA_ID = '2199839434199553';
+router.get('/wa-subs', auth, async (req, res) => {
+  const r = await fetch(`${G}/${WABA_ID}/subscribed_apps?access_token=${cfg.wa.token}`);
+  res.status(r.status).json(await r.json());
+});
+router.get('/wa-subscribe', auth, async (req, res) => {
+  const r = await fetch(`${G}/${WABA_ID}/subscribed_apps`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${cfg.wa.token}` },
+  });
+  res.status(r.status).json(await r.json());
+});
