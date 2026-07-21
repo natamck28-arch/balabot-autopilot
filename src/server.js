@@ -12,6 +12,7 @@ app.get('/health', (req, res) => res.json({ ok: true, graph: cfg.meta.graph, tim
 app.use('/onboarding', require('./routes/onboarding'));
 app.use('/webhook/whatsapp', require('./routes/whatsapp'));
 app.use('/dashboard', require('./routes/dashboard'));
+app.use('/admin', require('./routes/admin'));
 
 if (require.main === module) {
   app.listen(cfg.port, () => {
