@@ -84,6 +84,14 @@ async function processForPost(buffer, brand) {
   return hostPublicly(improved);
 }
 
+// Enhance an already-hosted image (by URL on our own server) on demand.
+async function enhanceFromUrl(url, brand) {
+  const res = await fetch(url);
+  const buf = Buffer.from(await res.arrayBuffer());
+  const improved = await enhance(buf, brand);
+  return hostPublicly(improved);
+}
+
 // Videos are not enhanced — just hosted publicly so Instagram can fetch them.
 function extFromMime(mime) {
   if (!mime) return 'mp4';
@@ -94,4 +102,4 @@ function hostVideo(buffer, mime) {
   return hostPublicly(buffer, extFromMime(mime));
 }
 
-module.exports = { enhance, hostPublicly, hostVideo, processForPost, PUB_DIR };
+module.exports = { enhance, enhanceFromUrl, hostPublicly, hostVideo, extFromMime, processForPost, PUB_DIR };

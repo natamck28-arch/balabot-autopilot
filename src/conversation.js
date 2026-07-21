@@ -4,13 +4,15 @@ const ig = require('./services/instagram');
 const images = require('./services/images');
 const ai = require('./services/ai');
 
-const YES = /\b(yes|ok|approve|go|publish|כן|מאשר|אישור|לפרסם|פרסם|יאללה|אוקיי|אוקי|בטח)\b/i;
+const YES = /\b(yes|ok|approve|go|publish|כן|מאשר|אישור|לפרסם|פרסם|יאללה|אוקיי|אוקי|בטח|תעלה|העלה)\b/i;
+const PUBLISH_RE = /תעלה|העלה|תפרסם|לפרסם|פרסם|שגר|תשגר/i;
 const STORY_RE = /סטורי|סטוריז|story|stories/i;
 const REEL_RE  = /\bרייל\b|\bריל\b|reel|reels/i;
-const FEED_RE  = /\b(feed)\b|בפיד|לפיד|פוסט רגיל|רגיל/i;
-const PUBLISH_RE = /תעלה|העלה|תפרסם|לפרסם|פרסם|שגר|תשגר/i;
+const FEED_RE  = /\bfeed\b|בפיד|לפיד|פוסט רגיל|\bפוסט\b|רגיל/i;
+// "as is" / original — do NOT recreate with AI
+const RAW_RE = /כמו שהיא|כמו שזה|כמו שהוא|בלי שיפור|בלי לשפר|לא לשפר|אל תשפר|בלי לשנות|בלי שינוי|בלי לגעת|מקורי|מקורית|המקורי|as[ -]?is|original|raw/i;
+const ENHANCE_RE = /תשפר|לשפר|שיפור|תשדרג|שדרג|enhance|improve/i;
 
-// human labels for the current draft format
 function fmtLabel(d) {
   if (d.format === 'story') return d.mediaKind === 'video' ? 'סטורי (וידאו)' : 'סטורי';
   if (d.format === 'reel') return 'רייל';
@@ -21,10 +23,22 @@ function doneLabel(d) {
   if (d.format === 'reel') return 'הרייל';
   return 'הפוסט';
 }
-// re-send a preview: real image for photos, text-only for videos
 async function sendPreview(from, draft, text) {
   if (draft.mediaKind === 'image' && draft.imageUrl) return wa.sendImageByUrl(from, draft.imageUrl, text);
   return wa.sendText(from, text);
+}
+// build the caption shown under a preview
+function previewText(d) {
+  const rawTag = d.mediaKind === 'image' && d.raw ? ' (התמונה המקורית, בלי שיפור AI)' : '';
+  if (d.format === 'story') {
+    const alt = d.mediaKind === 'image' ? (d.raw ? "'שפר' לשיפור AI" : "'מקורי' להעלות בלי שיפור") + " · 'פוסט' לפוסט בפיד" : "'רייל' להעלות כרייל";
+    return `תצוגה מקדימה — יעלה כ*סטורי*${rawTag} 👇\n\nענה *כן* לפרסום · ${alt} · או כתוב מה לשנות.`;
+  }
+  if (d.format === 'reel') {
+    return `תצוגה מקדימה — יעלה כ*רייל* 🎬\n\n${d.caption}\n\nענה *כן* לפרסום · 'סטורי' להעלות כסטורי · או מה לשנות בכיתוב.`;
+  }
+  const alt = d.mediaKind === 'image' ? (d.raw ? "'שפר' לשיפור AI" : "'מקורי' להעלות בלי שיפור") : '';
+  return `תצוגה מקדימה של הפוסט${rawTag} 👇\n\n${d.caption}\n\nענה *כן* לפרסום · 'סטורי' לסטורי${alt ? ' · ' + alt : ''} · או מה לשנות.`;
 }
 
 async function handleInbound({ from, type, text, imageId, videoId }) {
@@ -43,18 +57,22 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
     convo.history.push({ role: 'user', content: '[שלחתי תמונה]' + (text ? ' עם הערה: ' + text : '') });
     await wa.sendText(from, "קיבלתי 📸 רגע, מכין לך תצוגה מקדימה...");
     try {
-      const { buffer } = await wa.downloadMedia(imageId);
-      const publicUrl = await images.processForPost(buffer, brand);
+      const { buffer, mime } = await wa.downloadMedia(imageId);
+      const ext = images.extFromMime(mime) === 'mov' ? 'jpg' : (mime && mime.includes('png') ? 'png' : 'jpg');
+      const originalUrl = images.hostPublicly(buffer, ext);   // always keep the untouched original
+      const rawWanted = RAW_RE.test(text || '');
+      let enhancedUrl = null, imageUrl = originalUrl, raw = true;
+      if (!rawWanted) {
+        try { enhancedUrl = await images.processForPost(buffer, brand); imageUrl = enhancedUrl; raw = false; }
+        catch (e) { console.error('enhance failed, using original:', e.message); }
+      }
       const caption = await ai.generateCaption(brand, text || '');
       const format = STORY_RE.test(text || '') ? 'story' : 'feed';
-      convo.draft = { mediaKind: 'image', imageUrl: publicUrl, caption, format };
+      convo.draft = { mediaKind: 'image', imageUrl, originalUrl, enhancedUrl, raw, caption, format };
       convo.state = 'AWAITING_APPROVAL';
-      convo.history.push({ role: 'assistant', content: 'שלחתי תצוגה מקדימה של הפוסט.' });
+      convo.history.push({ role: 'assistant', content: 'שלחתי תצוגה מקדימה.' });
       store.setConvo(from, convo);
-      const previewCap = format === 'story'
-        ? `הנה תצוגה מקדימה — יעלה כ*סטורי* 👇 (נעלם אחרי 24 שעות)\n\nענה *כן* כדי לפרסם, או כתוב מה לשנות.`
-        : `הנה תצוגה מקדימה של הפוסט 👇\n\n${caption}\n\nענה *כן* כדי לפרסם, כתוב *סטורי* כדי להעלות כסטורי, או כתוב מה לשנות.`;
-      await wa.sendImageByUrl(from, publicUrl, previewCap);
+      await wa.sendImageByUrl(from, imageUrl, previewText(convo.draft));
     } catch (e) { console.error(e); await wa.sendText(from, "הייתה בעיה עם התמונה — אפשר לשלוח אותה שוב?"); }
     return;
   }
@@ -72,10 +90,7 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
       convo.state = 'AWAITING_APPROVAL';
       convo.history.push({ role: 'assistant', content: 'שלחתי תצוגה מקדימה של הסרטון.' });
       store.setConvo(from, convo);
-      const previewCap = format === 'story'
-        ? `קיבלתי סרטון 🎬 — יעלה כ*סטורי* (נעלם אחרי 24 שעות).\n\nענה *כן* כדי לפרסם, או כתוב *רייל* כדי להעלות כרייל.`
-        : `קיבלתי סרטון 🎬 — יעלה כ*רייל* עם הכיתוב:\n\n${caption}\n\nענה *כן* כדי לפרסם, כתוב *סטורי* להעלות כסטורי, או כתוב מה לשנות בכיתוב.`;
-      await wa.sendText(from, previewCap);
+      await wa.sendText(from, previewText(convo.draft));
     } catch (e) { console.error(e); await wa.sendText(from, "הייתה בעיה עם הסרטון — אפשר לשלוח אותו שוב?"); }
     return;
   }
@@ -89,32 +104,39 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
     const isVideo = d.mediaKind === 'video';
     d.format = d.format || (isVideo ? 'reel' : 'feed');
 
-    // allow switching the target format (only to ones valid for this media kind)
-    const switchStory = STORY_RE.test(t);
-    const switchReel  = isVideo && REEL_RE.test(t);
-    const switchFeed  = !isVideo && FEED_RE.test(t);
-    if (switchStory) d.format = 'story';
-    else if (switchReel) d.format = 'reel';
-    else if (switchFeed) d.format = 'feed';
+    let changed = false;
 
-    const publishIntent = YES.test(t) || PUBLISH_RE.test(t);
-
-    // format switch WITHOUT a publish word -> re-confirm, don't post yet
-    if ((switchStory || switchReel || switchFeed) && !publishIntent) {
-      store.setConvo(from, convo);
-      const note = d.format === 'story'
-        ? `סבבה — אעלה כ*סטורי* (נעלם אחרי 24 שעות). ענה *כן* לפרסום.`
-        : d.format === 'reel'
-          ? `סבבה — אעלה כ*רייל* עם הכיתוב. ענה *כן* לפרסום.`
-          : `סבבה — אעלה כ*פוסט בפיד* עם הכיתוב. ענה *כן* לפרסום.`;
-      await sendPreview(from, d, note);
-      return;
+    // image: raw <-> enhanced toggle
+    if (!isVideo) {
+      if (RAW_RE.test(t) && !d.raw) {
+        d.raw = true; d.imageUrl = d.originalUrl; changed = true;
+      } else if (ENHANCE_RE.test(t) && d.raw) {
+        try {
+          if (!d.enhancedUrl) { await wa.sendText(from, "משפר את התמונה... ✨"); d.enhancedUrl = await images.enhanceFromUrl(d.originalUrl, brand); }
+          d.raw = false; d.imageUrl = d.enhancedUrl; changed = true;
+        } catch (e) { console.error('on-demand enhance failed', e.message); await wa.sendText(from, "לא הצלחתי לשפר כרגע — נשאר עם המקורית."); }
+      }
     }
 
-    if (publishIntent) {
+    // format toggle
+    const wantStory = STORY_RE.test(t);
+    const wantReel = isVideo && REEL_RE.test(t);
+    const wantFeed = !isVideo && FEED_RE.test(t);
+    const formatKeyword = wantStory || wantReel || wantFeed;
+    const newFormat = wantStory ? 'story' : wantReel ? 'reel' : wantFeed ? 'feed' : d.format;
+    const formatChanged = newFormat !== d.format;
+    d.format = newFormat;
+    if (formatChanged) changed = true;
+
+    // publish if: explicit yes/publish word, OR a format keyword that matches the
+    // CURRENT format with no other pending change (i.e. "yes, this format").
+    const explicitYes = YES.test(t) || PUBLISH_RE.test(t);
+    const shouldPublish = explicitYes || (formatKeyword && !formatChanged && !changed);
+
+    if (shouldPublish) {
       if (!client.igUserId || !client.pageToken) {
         convo.state = 'IDLE'; convo.draft = null; store.setConvo(from, convo);
-        await wa.sendText(from, "🎉 מעולה! בהדגמה הזו עוד לא חובר חשבון אינסטגרם אמיתי — ברגע שנחבר, פוסטים כאלה יעלו אוטומטית באישורך. שלח לי עוד תמונה מתי שבא לך!");
+        await wa.sendText(from, "🎉 מעולה! אבל עדיין אין כאן חשבון אינסטגרם מחובר. סיים את קישור ההרשמה ואז נוכל לפרסם.");
         return;
       }
       await wa.sendText(from, `מעלה ${fmtLabel(d)}... 🚀${isVideo ? ' (עיבוד וידאו יכול לקחת דקה)' : ''}`);
@@ -128,7 +150,7 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
           if (d.format === 'story') ({ mediaId } = await ig.publishStory({ ...auth, imageUrl: d.imageUrl }));
           else ({ mediaId } = await ig.publishPhoto({ ...auth, imageUrl: d.imageUrl, caption: d.caption }));
         }
-        store.logPost({ clientId: client.id, mediaId, caption: d.caption, format: d.format, mediaKind: d.mediaKind });
+        store.logPost({ clientId: client.id, mediaId, caption: d.caption, format: d.format, mediaKind: d.mediaKind, raw: !!d.raw });
         convo.state = 'IDLE'; convo.draft = null; store.setConvo(from, convo);
         const suffix = d.format === 'story' ? ' (נעלם אחרי 24 שעות)' : '';
         await wa.sendText(from, `בוצע ✅ ${doneLabel(d)} עלה לאינסטגרם @${client.igUsername}${suffix}. שלח לי את הבא מתי שתרצה!`);
@@ -136,14 +158,20 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
       return;
     }
 
+    // a change was requested (format / raw / enhance) but no publish word -> show updated preview ONCE
+    if (changed) {
+      store.setConvo(from, convo);
+      await sendPreview(from, d, previewText(d));
+      return;
+    }
+
     // otherwise: let Claude decide -> revise the caption, OR exit the flow and just chat
     const decision = await ai.approvalDecision(brand, d.caption, t);
     if (decision && decision.action === 'revise' && decision.caption) {
       d.caption = decision.caption; store.setConvo(from, convo);
-      await sendPreview(from, d, `עודכן 👇\n\n${decision.caption}\n\nענה *כן* כדי לפרסם, או כתוב מה לשנות.`);
+      await sendPreview(from, d, `עודכן 👇\n\n${decision.caption}\n\nענה *כן* לפרסום, או כתוב מה לשנות.`);
       return;
     }
-    // user wants to cancel / talk about something else -> leave approval mode
     convo.state = 'CHATTING'; convo.draft = null;
     convo.history.push({ role: 'assistant', content: (decision && decision.reply) || 'ביטלתי.' });
     store.setConvo(from, convo);
