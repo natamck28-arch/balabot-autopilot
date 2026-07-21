@@ -60,11 +60,13 @@ async function discoverInstagram(userToken) {
 }
 
 // --- Step 1: create a media container ---
-async function createContainer({ igUserId, pageToken, imageUrl, caption, isReel = false, videoUrl }) {
+async function createContainer({ igUserId, pageToken, imageUrl, caption, isReel = false, videoUrl, isStory = false }) {
   const body = { access_token: pageToken };
-  if (isReel) { body.media_type = 'REELS'; body.video_url = videoUrl; }
+  if (isStory) { body.media_type = 'STORIES'; body.image_url = imageUrl; }
+  else if (isReel) { body.media_type = 'REELS'; body.video_url = videoUrl; }
   else { body.image_url = imageUrl; }
-  if (caption) body.caption = caption;
+  // Stories don't support captions via the API.
+  if (caption && !isStory) body.caption = caption;
   const r = await gql(`${igUserId}/media`, { method: 'POST', body });
   return r.id; // container id
 }
@@ -99,6 +101,14 @@ async function publishPhoto({ igUserId, pageToken, imageUrl, caption }) {
   return { mediaId, containerId };
 }
 
+// --- Convenience: publish a photo Story (disappears after 24h; no caption) ---
+async function publishStory({ igUserId, pageToken, imageUrl }) {
+  const containerId = await createContainer({ igUserId, pageToken, imageUrl, isStory: true });
+  await waitForContainer(containerId, pageToken);
+  const mediaId = await publishContainer({ igUserId, pageToken, containerId });
+  return { mediaId, containerId };
+}
+
 module.exports = {
   exchangeCodeForToken,
   discoverInstagram,
@@ -106,4 +116,5 @@ module.exports = {
   waitForContainer,
   publishContainer,
   publishPhoto,
+  publishStory,
 };
