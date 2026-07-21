@@ -39,3 +39,10 @@ router.get('/wa-send', auth, async (req, res) => {
 });
 
 module.exports = router;
+
+// (appended) view the most recent inbound webhook payloads
+router.get('/last-inbound', (req, res) => {
+  if ((req.query.token || req.headers['x-admin-token']) !== cfg.adminToken)
+    return res.status(401).json({ error: 'unauthorized' });
+  res.json({ count: (global.__lastInbound || []).length, items: global.__lastInbound || [] });
+});

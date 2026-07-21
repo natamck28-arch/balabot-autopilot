@@ -6,27 +6,31 @@ const { handleInbound } = require('../conversation');
 
 const router = express.Router();
 
-// --- Verification handshake (Meta calls this once when you set the webhook) ---
+// keep the last few inbound payloads in memory for debugging (see /admin/last-inbound)
+global.__lastInbound = global.__lastInbound || [];
+
 router.get('/', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
-  if (mode === 'subscribe' && token === cfg.wa.verifyToken) {
-    return res.status(200).send(challenge);
-  }
+  if (mode === 'subscribe' && token === cfg.wa.verifyToken) return res.status(200).send(challenge);
   return res.sendStatus(403);
 });
 
-// --- Inbound events ---
 router.post('/', async (req, res) => {
-  res.sendStatus(200); // ack fast; process async (Meta retries on non-200)
+  res.sendStatus(200);
   try {
+    console.log('WEBHOOK IN:', JSON.stringify(req.body));
+    global.__lastInbound.push({ at: Date.now(), body: req.body });
+    if (global.__lastInbound.length > 20) global.__lastInbound.shift();
+
     const entry = req.body.entry?.[0];
     const change = entry?.changes?.[0]?.value;
     const msg = change?.messages?.[0];
-    if (!msg) return; // status update, not a message
+    if (!msg) { console.log('  (no message in payload — status/other)'); return; }
 
-    const from = msg.from; // e.g. "9725..."
+    const from = msg.from;
+    console.log('  message from', from, 'type', msg.type);
     await wa.markRead(msg.id);
 
     if (msg.type === 'text') {
@@ -37,8 +41,9 @@ router.post('/', async (req, res) => {
       const t = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || '';
       await handleInbound({ from, type: 'text', text: t });
     } else {
-      await wa.sendText(from, "I can work with photos and text 🙂 send me a photo to post!");
+      await wa.sendText(from, "I can work with photos and text. Send me a photo to post!");
     }
+    console.log('  handled OK');
   } catch (e) {
     console.error('webhook handler error', e);
   }
