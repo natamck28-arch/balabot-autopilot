@@ -54,10 +54,18 @@ async function handleInbound({ from, type, text, imageId }) {
       } catch (e) { console.error('publish error', e.details || e.message); await wa.sendText(from, "לא הצלחתי לפרסם — סימנתי לצוות לבדוק. שום דבר לא פורסם."); }
       return;
     }
-    // any other text => treat as caption revision
-    const caption = await ai.generateCaption(brand, t);
-    convo.draft.caption = caption; store.setConvo(from, convo);
-    await wa.sendImageByUrl(from, convo.draft.imageUrl, `עודכן 👇\n\n${caption}\n\nענה *כן* כדי לפרסם, או כתוב מה לשנות.`);
+    // otherwise: let Claude decide -> revise the caption, OR exit the flow and just chat
+    const decision = await ai.approvalDecision(brand, convo.draft.caption, t);
+    if (decision && decision.action === 'revise' && decision.caption) {
+      convo.draft.caption = decision.caption; store.setConvo(from, convo);
+      await wa.sendImageByUrl(from, convo.draft.imageUrl, `עודכן 👇\n\n${decision.caption}\n\nענה *כן* כדי לפרסם, או כתוב מה לשנות.`);
+      return;
+    }
+    // user wants to cancel / talk about something else -> leave approval mode
+    convo.state = 'CHATTING'; convo.draft = null;
+    convo.history.push({ role: 'assistant', content: (decision && decision.reply) || 'ביטלתי את הפוסט.' });
+    store.setConvo(from, convo);
+    await wa.sendText(from, (decision && decision.reply) || 'סבבה, ביטלתי את הפוסט. על מה בא לך לדבר? 😊');
     return;
   }
 

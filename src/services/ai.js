@@ -54,4 +54,22 @@ async function conversationReply(brand, state, history, userText) {
   return await chat(convoSystem(brand), msgs);
 }
 
-module.exports = { generateCaption, conversationReply };
+
+// During the approval step: decide if the user wants to revise the caption,
+// or actually wants to cancel / talk about something else / ask a question.
+async function approvalDecision(brand, currentCaption, userText) {
+  const system =
+    'לקוח של שירות ניהול רשתות חברתיות קיבל תצוגה מקדימה של פוסט עם הכיתוב:\n' +
+    '"' + currentCaption + '"\n' +
+    'עכשיו הוא כתב הודעה. החלט מה הכוונה שלו והחזר JSON תקין בלבד (בלי טקסט נוסף, בלי code fences):\n' +
+    '- אם הוא מבקש לשנות/לתקן/לשפר את הכיתוב: {"action":"revise","caption":"הכיתוב החדש המתוקן בעברית כולל 3-6 hashtags"}\n' +
+    '- אם הוא רוצה לבטל, לדבר על משהו אחר, לשאול שאלה, או משהו שלא קשור לכיתוב: {"action":"chat","reply":"תשובה טבעית וחמה בעברית"}';
+  const out = await chat(system, [{ role: 'user', content: userText }]);
+  if (!out) return null;
+  try {
+    const m = out.match(/\{[\s\S]*\}/);
+    return JSON.parse(m ? m[0] : out);
+  } catch (e) { return null; }
+}
+
+module.exports = { generateCaption, conversationReply, approvalDecision };
