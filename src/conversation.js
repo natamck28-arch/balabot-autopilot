@@ -1,40 +1,29 @@
-// ============================================================
-//  Conversation brain — drives the WhatsApp chat with each client.
-//  State machine:
-//    NEW            -> greet, ask for today's photo(s)
-//    AWAITING_PHOTO -> on image: enhance + caption -> send preview -> AWAITING_APPROVAL
-//    AWAITING_APPROVAL -> "yes" => publish to IG; "redo"/text => regenerate caption
-//    IDLE           -> ready for next batch
-//  AI generates natural language; the state machine guarantees the flow.
-// ============================================================
+// Conversation brain (Hebrew scripted flow, works without an AI key).
 const store = require('./db');
 const wa = require('./services/whatsapp');
 const ig = require('./services/instagram');
 const images = require('./services/images');
 const ai = require('./services/ai');
 
-const YES = /\b(yes|yep|yeah|ok|okay|approve|approved|go|post it|publish|כן|מאשר|אישור|לפרסם|פרסם)\b/i;
-const REDO = /\b(no|redo|change|again|different|לא|שנה|תשנה|שוב|אחר)\b/i;
+const YES = /\b(yes|ok|approve|go|publish|כן|מאשר|אישור|לפרסם|פרסם|יאללה|אוקיי|אוקי)\b/i;
 
 async function say(to, text) { await wa.sendText(to, text); }
 
-async function handleInbound({ from, type, text, imageId, brandOverride }) {
-  const client = brandOverride || store.getClientByWa(from);
-  const brand = client || { businessName: 'our studio', language: 'the user\'s language' };
+async function handleInbound({ from, type, text, imageId }) {
+  const client = store.getClientByWa(from);
   let convo = store.getConvo(from);
   convo.history = convo.history || [];
   if (text) convo.history.push({ role: 'user', content: text });
 
-  // Not onboarded yet
   if (!client) {
-    await say(from,
-      "Hi! 👋 This number isn't linked to an account yet. Please finish the quick setup link your rep sent you, then message me again.");
+    await say(from, "היי! 👋 המספר הזה עדיין לא מחובר לחשבון. סיים את קישור ההרשמה הקצר שקיבלת ואז כתוב לי שוב.");
     return;
   }
+  const brand = client;
 
   // ---- IMAGE received ----
   if (type === 'image' && imageId) {
-    await say(from, "Got it 📸 — enhancing your photo and writing a caption, one sec...");
+    await say(from, "קיבלתי 📸 משפר את התמונה וכותב כיתוב, שנייה...");
     try {
       const { buffer } = await wa.downloadMedia(imageId);
       const publicUrl = await images.processForPost(buffer, brand);
@@ -43,53 +32,51 @@ async function handleInbound({ from, type, text, imageId, brandOverride }) {
       convo.state = 'AWAITING_APPROVAL';
       store.setConvo(from, convo);
       await wa.sendImageByUrl(from, publicUrl,
-        `Here's your post preview 👇\n\n${caption}\n\nReply *YES* to publish, or tell me what to change.`);
+        `הנה תצוגה מקדימה של הפוסט 👇\n\n${caption}\n\nענה *כן* כדי לפרסם, או כתוב לי מה לשנות.`);
     } catch (e) {
       console.error(e);
-      await say(from, "Hmm, I had trouble processing that image. Could you resend it?");
+      await say(from, "הייתה בעיה בעיבוד התמונה. אפשר לשלוח אותה שוב?");
     }
     return;
   }
 
-  // ---- TEXT received ----
   const t = (text || '').trim();
 
+  // ---- approval ----
   if (convo.state === 'AWAITING_APPROVAL' && convo.draft) {
     if (YES.test(t)) {
-      await say(from, "Publishing now... 🚀");
+      if (!client.igUserId || !client.pageToken) {
+        convo.state = 'IDLE'; convo.draft = null; store.setConvo(from, convo);
+        await say(from, "🎉 מעולה! בהדגמה הזו עוד לא חיברנו חשבון אינסטגרם אמיתי — ברגע שנחבר אותו, פוסטים כאלה יעלו אוטומטית באישור שלך. שלח לי עוד תמונה מתי שבא לך!");
+        return;
+      }
+      await say(from, "מפרסם עכשיו... 🚀");
       try {
         const { mediaId } = await ig.publishPhoto({
-          igUserId: client.igUserId,
-          pageToken: client.pageToken,
-          imageUrl: convo.draft.imageUrl,
-          caption: convo.draft.caption,
+          igUserId: client.igUserId, pageToken: client.pageToken,
+          imageUrl: convo.draft.imageUrl, caption: convo.draft.caption,
         });
         store.logPost({ clientId: client.id, mediaId, caption: convo.draft.caption });
-        convo.state = 'IDLE'; convo.draft = null;
-        store.setConvo(from, convo);
-        await say(from, `Done ✅ It's live on @${client.igUsername}. Send me the next photo whenever you're ready!`);
+        convo.state = 'IDLE'; convo.draft = null; store.setConvo(from, convo);
+        await say(from, `בוצע ✅ הפוסט עלה לאינסטגרם @${client.igUsername}. שלח לי את התמונה הבאה מתי שתרצה!`);
       } catch (e) {
         console.error('publish error', e.details || e.message);
-        await say(from, "I couldn't publish that — I've flagged it for the team to check the Instagram connection. Nothing was posted.");
+        await say(from, "לא הצלחתי לפרסם — סימנתי לצוות לבדוק את החיבור לאינסטגרם. שום דבר לא פורסם.");
       }
       return;
     }
-    if (REDO.test(t) || t.length > 0) {
-      // treat any other text as a revision instruction
+    if (t.length > 0) {
       const caption = await ai.generateCaption(brand, t);
-      convo.draft.caption = caption;
-      store.setConvo(from, convo);
+      convo.draft.caption = caption; store.setConvo(from, convo);
       await wa.sendImageByUrl(from, convo.draft.imageUrl,
-        `Updated 👇\n\n${caption}\n\nReply *YES* to publish, or tell me what to change.`);
+        `עודכן 👇\n\n${caption}\n\nענה *כן* כדי לפרסם, או כתוב מה לשנות.`);
       return;
     }
   }
 
-  // ---- default / greeting / small talk ----
-  const reply = await ai.conversationReply(brand, convo.state, convo.history, t);
+  // ---- greeting / default ----
   if (convo.state === 'NEW') { convo.state = 'AWAITING_PHOTO'; store.setConvo(from, convo); }
-  await say(from, reply ||
-    `Hi! I'm the assistant for ${brand.businessName}. Send me a photo and I'll enhance it, write a caption, and post it to Instagram after your OK. 📸`);
+  await say(from, `היי! אני העוזר של ${brand.businessName || 'העסק שלך'} 😊 שלח לי תמונה ואני אשפר אותה, אכתוב כיתוב, ואחרי אישור שלך אפרסם אותה. 📸`);
 }
 
 module.exports = { handleInbound };

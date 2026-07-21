@@ -56,8 +56,8 @@ async function generateCaption(brand, hint = '') {
   const out = await chat(system, [{ role: 'user', content: `Photo context from the owner: "${hint || 'no extra context'}". Write the caption.` }]);
   if (out) return out;
   // fallback
-  const tags = (brand.hashtags || '#local #business #daily').trim();
-  return `${brand.businessName} — ${hint || 'here to serve you today.'}\n${tags}`;
+  const tags = (brand.hashtags || '#עסק #מקומי').trim();
+  return `${brand.businessName || ''} ${hint ? '— ' + hint : ''}\n${tags}`.trim();
 }
 
 // Produce a natural WhatsApp reply given the conversation state + history.

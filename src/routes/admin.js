@@ -61,3 +61,17 @@ router.get('/wa-subscribe', auth, async (req, res) => {
   });
   res.status(r.status).json(await r.json());
 });
+
+// (appended) seed a demo client so a WhatsApp number gets the full bot flow
+router.get('/seed-client', auth, (req, res) => {
+  const wa = (req.query.wa || '').replace(/[^0-9]/g, '');
+  if (!wa) return res.status(400).json({ error: 'pass ?wa=<number>' });
+  const store = require('../db');
+  const c = store.upsertClient({
+    id: 'demo-' + wa, waNumber: wa,
+    businessName: req.query.name || 'העסק שלי',
+    language: 'Hebrew', style: 'חם וידידותי',
+    hashtags: '#עסק #מקומי', status: 'active',
+  });
+  res.json({ ok: true, client: { id: c.id, waNumber: c.waNumber, businessName: c.businessName } });
+});
