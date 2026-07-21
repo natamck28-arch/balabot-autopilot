@@ -37,6 +37,8 @@ router.post('/', async (req, res) => {
       await handleInbound({ from, type: 'text', text: msg.text.body });
     } else if (msg.type === 'image') {
       await handleInbound({ from, type: 'image', imageId: msg.image.id, text: msg.image.caption });
+    } else if (msg.type === 'video') {
+      await handleInbound({ from, type: 'video', videoId: msg.video.id, text: msg.video.caption });
     } else if (msg.type === 'interactive') {
       const t = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || '';
       await handleInbound({ from, type: 'text', text: t });

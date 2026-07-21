@@ -84,4 +84,14 @@ async function processForPost(buffer, brand) {
   return hostPublicly(improved);
 }
 
-module.exports = { enhance, hostPublicly, processForPost, PUB_DIR };
+// Videos are not enhanced — just hosted publicly so Instagram can fetch them.
+function extFromMime(mime) {
+  if (!mime) return 'mp4';
+  if (mime.includes('quicktime') || mime.includes('mov')) return 'mov';
+  return 'mp4';
+}
+function hostVideo(buffer, mime) {
+  return hostPublicly(buffer, extFromMime(mime));
+}
+
+module.exports = { enhance, hostPublicly, hostVideo, processForPost, PUB_DIR };

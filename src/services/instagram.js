@@ -62,9 +62,15 @@ async function discoverInstagram(userToken) {
 // --- Step 1: create a media container ---
 async function createContainer({ igUserId, pageToken, imageUrl, caption, isReel = false, videoUrl, isStory = false }) {
   const body = { access_token: pageToken };
-  if (isStory) { body.media_type = 'STORIES'; body.image_url = imageUrl; }
-  else if (isReel) { body.media_type = 'REELS'; body.video_url = videoUrl; }
-  else { body.image_url = imageUrl; }
+  if (isStory) {
+    body.media_type = 'STORIES';
+    if (videoUrl) body.video_url = videoUrl; else body.image_url = imageUrl;
+  } else if (isReel) {
+    body.media_type = 'REELS';
+    body.video_url = videoUrl;
+  } else {
+    body.image_url = imageUrl;
+  }
   // Stories don't support captions via the API.
   if (caption && !isStory) body.caption = caption;
   const r = await gql(`${igUserId}/media`, { method: 'POST', body });
@@ -109,6 +115,25 @@ async function publishStory({ igUserId, pageToken, imageUrl }) {
   return { mediaId, containerId };
 }
 
+// Video containers take longer to transcode -> poll longer.
+const VIDEO_WAIT = { tries: 30, delayMs: 8000 };
+
+// --- Convenience: publish a Reel (video feed post, supports caption) ---
+async function publishReel({ igUserId, pageToken, videoUrl, caption }) {
+  const containerId = await createContainer({ igUserId, pageToken, videoUrl, caption, isReel: true });
+  await waitForContainer(containerId, pageToken, VIDEO_WAIT);
+  const mediaId = await publishContainer({ igUserId, pageToken, containerId });
+  return { mediaId, containerId };
+}
+
+// --- Convenience: publish a video Story (disappears after 24h; no caption) ---
+async function publishVideoStory({ igUserId, pageToken, videoUrl }) {
+  const containerId = await createContainer({ igUserId, pageToken, videoUrl, isStory: true });
+  await waitForContainer(containerId, pageToken, VIDEO_WAIT);
+  const mediaId = await publishContainer({ igUserId, pageToken, containerId });
+  return { mediaId, containerId };
+}
+
 module.exports = {
   exchangeCodeForToken,
   discoverInstagram,
@@ -117,4 +142,6 @@ module.exports = {
   publishContainer,
   publishPhoto,
   publishStory,
+  publishReel,
+  publishVideoStory,
 };
