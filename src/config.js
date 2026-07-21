@@ -21,7 +21,7 @@ const cfg = {
     businessNumber: process.env.WA_BUSINESS_NUMBER,
   },
   ai: {
-    provider: process.env.AI_PROVIDER || 'none',
+    provider: process.env.AI_PROVIDER || (process.env.ANTHROPIC_API_KEY ? 'anthropic' : (process.env.OPENAI_API_KEY ? 'openai' : 'none')),
     anthropicKey: process.env.ANTHROPIC_API_KEY,
     openaiKey: process.env.OPENAI_API_KEY,
     model: process.env.AI_MODEL || 'claude-sonnet-5',
