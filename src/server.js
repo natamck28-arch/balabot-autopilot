@@ -37,15 +37,5 @@ if (require.main === module) {
     console.log('  Dashboard  ▸ ' + cfg.publicUrl + '/dashboard?token=' + cfg.adminToken + '\n');
     if (!cfg.meta.appId) console.log('  WARN: META_APP_ID not set - fill in .env before connecting clients.');
   });
-
-  // Keep-alive: on free hosting the instance sleeps after ~15 min of no traffic,
-  // which delays/drops the first WhatsApp message. A self-ping every 10 min keeps
-  // it awake so the bot always responds instantly. (Proper fix later = paid instance.)
-  if (cfg.publicUrl && cfg.publicUrl.startsWith('https://')) {
-    setInterval(() => {
-      fetch(cfg.publicUrl + '/health').catch(() => {});
-    }, 10 * 60 * 1000);
-    console.log('  Keep-alive ▸ self-ping every 10 min to stay awake');
-  }
 }
 module.exports = app;
