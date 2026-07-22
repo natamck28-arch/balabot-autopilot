@@ -13,6 +13,8 @@ const FEED_RE  = /\bfeed\b|בפיד|לפיד|פוסט רגיל|\bפוסט\b|רג
 // "as is" / original — do NOT recreate with AI
 const RAW_RE = /כמו שהיא|כמו שזה|כמו שהוא|בלי שיפור|בלי לשפר|לא לשפר|אל תשפר|בלי לשנות|בלי שינוי|בלי לגעת|מקורי|מקורית|המקורי|as[ -]?is|original|raw/i;
 const ENHANCE_RE = /תשפר|לשפר|שיפור|תשדרג|שדרג|enhance|improve/i;
+// Facebook posting needs the pages_manage_posts permission + a fresh connect; off until enabled.
+const FB_ENABLED = process.env.FB_ENABLED === 'true';
 // destination for a feed photo: Instagram only / Facebook only / both
 const DEST_IG_RE = /(רק|only)\s*\S{0,3}(אינסטגרם|אינסטה|instagram)|(אינסטגרם|אינסטה)\s*בלבד|בלי\s*\S{0,3}(פייסבוק|facebook)|לא\s*\S{0,3}(פייסבוק|facebook)/i;
 const DEST_FB_RE = /(רק|only)\s*\S{0,3}(פייסבוק|facebook)|(פייסבוק|facebook)\s*בלבד|בלי\s*\S{0,3}(אינסטגרם|אינסטה|instagram)|לא\s*\S{0,3}(אינסטגרם|אינסטה)/i;
@@ -43,7 +45,8 @@ function previewText(d) {
     return `תצוגה מקדימה — יעלה כ*רייל* 🎬\n\n${d.caption}\n\nענה *כן* לפרסום · 'סטורי' להעלות כסטורי · או מה לשנות בכיתוב.`;
   }
   const alt = d.mediaKind === 'image' ? (d.raw ? "'שפר' לשיפור AI" : "'מקורי' להעלות בלי שיפור") : '';
-  const destLine = d.dest === 'ig' ? '\n📤 יעלה ל*אינסטגרם בלבד*.'
+  const destLine = !d.fbAvailable ? ''
+    : d.dest === 'ig' ? '\n📤 יעלה ל*אינסטגרם בלבד*.'
     : d.dest === 'fb' ? '\n📤 יעלה ל*פייסבוק בלבד*.'
     : d.dest === 'both' ? '\n📤 יעלה ל*אינסטגרם + פייסבוק* (כתוב "רק אינסטגרם" / "רק פייסבוק" לשנות).'
     : '';
@@ -77,9 +80,9 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
       }
       const caption = await ai.generateCaption(brand, text || '');
       const format = STORY_RE.test(text || '') ? 'story' : 'feed';
-      const hasFb = !!(client.pageId && client.pageToken);
-      const dest = (format === 'feed' && hasFb) ? 'both' : 'ig';
-      convo.draft = { mediaKind: 'image', imageUrl, originalUrl, enhancedUrl, raw, caption, format, dest };
+      const fbAvailable = FB_ENABLED && !!(client.pageId && client.pageToken);
+      const dest = (format === 'feed' && fbAvailable) ? 'both' : 'ig';
+      convo.draft = { mediaKind: 'image', imageUrl, originalUrl, enhancedUrl, raw, caption, format, dest, fbAvailable };
       convo.state = 'AWAITING_APPROVAL';
       convo.history.push({ role: 'assistant', content: 'שלחתי תצוגה מקדימה.' });
       store.setConvo(from, convo);
@@ -130,10 +133,18 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
     }
 
     // image feed: destination toggle (Instagram / Facebook / both)
-    if (!isVideo && d.format === 'feed' && client.pageId && client.pageToken) {
-      if (DEST_IG_RE.test(t) && d.dest !== 'ig') { d.dest = 'ig'; changed = true; }
-      else if (DEST_FB_RE.test(t) && d.dest !== 'fb') { d.dest = 'fb'; changed = true; }
-      else if (DEST_BOTH_RE.test(t) && d.dest !== 'both') { d.dest = 'both'; changed = true; }
+    if (!isVideo && d.format === 'feed') {
+      const asksFb = DEST_FB_RE.test(t) || DEST_BOTH_RE.test(t);
+      if (asksFb && !d.fbAvailable) {
+        store.setConvo(from, convo);
+        await wa.sendText(from, 'פרסום לפייסבוק עדיין לא מופעל (צריך הרשאה נוספת וחיבור-מחדש קצר). בינתיים מעלה לאינסטגרם — כתוב *כן* לפרסום. רוצה שנפעיל פייסבוק?');
+        return;
+      }
+      if (d.fbAvailable) {
+        if (DEST_IG_RE.test(t) && d.dest !== 'ig') { d.dest = 'ig'; changed = true; }
+        else if (DEST_FB_RE.test(t) && d.dest !== 'fb') { d.dest = 'fb'; changed = true; }
+        else if (DEST_BOTH_RE.test(t) && d.dest !== 'both') { d.dest = 'both'; changed = true; }
+      }
     }
 
     // format toggle
@@ -174,7 +185,7 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
             ({ mediaId } = await ig.publishPhoto({ ...auth, imageUrl: d.imageUrl, caption: d.caption }));
             parts.push(`אינסטגרם @${client.igUsername}`);
           }
-          if (dest !== 'ig' && client.pageId && client.pageToken) {
+          if (dest !== 'ig' && d.fbAvailable && client.pageId && client.pageToken) {
             try { await fb.publishPagePhoto({ pageId: client.pageId, pageToken: client.pageToken, imageUrl: d.imageUrl, caption: d.caption }); parts.push('דף הפייסבוק'); }
             catch (e) { console.error('FB publish error', e.details || e.message); parts.push('(פייסבוק לא עלה — בודקים)'); }
           }
