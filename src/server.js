@@ -23,6 +23,7 @@ try {
   console.log('Seeded ' + seed.length + ' client(s) on boot');
 } catch (e) { console.error('boot seed error:', e.message); }
 
+app.use('/', require('./routes/legal'));
 app.use('/onboarding', require('./routes/onboarding'));
 app.use('/webhook/whatsapp', require('./routes/whatsapp'));
 app.use('/dashboard', require('./routes/dashboard'));
