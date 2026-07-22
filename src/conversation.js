@@ -14,9 +14,9 @@ const FEED_RE  = /\bfeed\b|בפיד|לפיד|פוסט רגיל|\bפוסט\b|רג
 const RAW_RE = /כמו שהיא|כמו שזה|כמו שהוא|בלי שיפור|בלי לשפר|לא לשפר|אל תשפר|בלי לשנות|בלי שינוי|בלי לגעת|מקורי|מקורית|המקורי|as[ -]?is|original|raw/i;
 const ENHANCE_RE = /תשפר|לשפר|שיפור|תשדרג|שדרג|enhance|improve/i;
 // destination for a feed photo: Instagram only / Facebook only / both
-const DEST_IG_RE = /רק אינסטגרם|רק אינסטה|בלי פייסבוק|לא פייסבוק|אינסטגרם בלבד/i;
-const DEST_FB_RE = /רק פייסבוק|פייסבוק בלבד/i;
-const DEST_BOTH_RE = /שניהם|גם פייסבוק|גם לפייסבוק|לשניהם/i;
+const DEST_IG_RE = /(רק|only)\s*\S{0,3}(אינסטגרם|אינסטה|instagram)|(אינסטגרם|אינסטה)\s*בלבד|בלי\s*\S{0,3}(פייסבוק|facebook)|לא\s*\S{0,3}(פייסבוק|facebook)/i;
+const DEST_FB_RE = /(רק|only)\s*\S{0,3}(פייסבוק|facebook)|(פייסבוק|facebook)\s*בלבד|בלי\s*\S{0,3}(אינסטגרם|אינסטה|instagram)|לא\s*\S{0,3}(אינסטגרם|אינסטה)/i;
+const DEST_BOTH_RE = /שניהם|לשניהם|גם\s*\S{0,3}(פייסבוק|אינסטגרם)|both/i;
 
 function fmtLabel(d) {
   if (d.format === 'story') return d.mediaKind === 'video' ? 'סטורי (וידאו)' : 'סטורי';
@@ -198,17 +198,24 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
       return;
     }
 
-    // otherwise: let Claude decide -> revise the caption, OR exit the flow and just chat
+    // explicit cancel only -> drop the pending post
+    if (/\bבטל\b|תבטל|בטלי|לבטל|מבטל|עזוב|שכח מזה|לא רוצה|לא צריך|תמחק/i.test(t)) {
+      convo.state = 'CHATTING'; convo.draft = null;
+      store.setConvo(from, convo);
+      await wa.sendText(from, 'סבבה, ביטלתי את הפוסט. שלח לי תמונה חדשה מתי שתרצה 😊');
+      return;
+    }
+    // otherwise: let Claude decide -> revise the caption. KEEP the draft either way.
     const decision = await ai.approvalDecision(brand, d.caption, t);
     if (decision && decision.action === 'revise' && decision.caption) {
       d.caption = decision.caption; store.setConvo(from, convo);
       await sendPreview(from, d, `עודכן 👇\n\n${decision.caption}\n\nענה *כן* לפרסום, או כתוב מה לשנות.`);
       return;
     }
-    convo.state = 'CHATTING'; convo.draft = null;
-    convo.history.push({ role: 'assistant', content: (decision && decision.reply) || 'ביטלתי.' });
+    // ambiguous / general chat -> answer but DO NOT drop the pending post
     store.setConvo(from, convo);
-    await wa.sendText(from, (decision && decision.reply) || 'סבבה, ביטלתי. על מה בא לך לדבר? 😊');
+    const reply = (decision && decision.reply) || '';
+    await wa.sendText(from, `${reply}${reply ? '\n\n' : ''}📌 התמונה עדיין ממתינה לפרסום — כתוב *כן* לפרסום, מה לשנות, או *בטל* לביטול.`);
     return;
   }
 
