@@ -13,6 +13,10 @@ const FEED_RE  = /\bfeed\b|בפיד|לפיד|פוסט רגיל|\bפוסט\b|רג
 // "as is" / original — do NOT recreate with AI
 const RAW_RE = /כמו שהיא|כמו שזה|כמו שהוא|בלי שיפור|בלי לשפר|לא לשפר|אל תשפר|בלי לשנות|בלי שינוי|בלי לגעת|מקורי|מקורית|המקורי|as[ -]?is|original|raw/i;
 const ENHANCE_RE = /תשפר|לשפר|שיפור|תשדרג|שדרג|enhance|improve/i;
+// destination for a feed photo: Instagram only / Facebook only / both
+const DEST_IG_RE = /רק אינסטגרם|רק אינסטה|בלי פייסבוק|לא פייסבוק|אינסטגרם בלבד/i;
+const DEST_FB_RE = /רק פייסבוק|פייסבוק בלבד/i;
+const DEST_BOTH_RE = /שניהם|גם פייסבוק|גם לפייסבוק|לשניהם/i;
 
 function fmtLabel(d) {
   if (d.format === 'story') return d.mediaKind === 'video' ? 'סטורי (וידאו)' : 'סטורי';
@@ -39,7 +43,11 @@ function previewText(d) {
     return `תצוגה מקדימה — יעלה כ*רייל* 🎬\n\n${d.caption}\n\nענה *כן* לפרסום · 'סטורי' להעלות כסטורי · או מה לשנות בכיתוב.`;
   }
   const alt = d.mediaKind === 'image' ? (d.raw ? "'שפר' לשיפור AI" : "'מקורי' להעלות בלי שיפור") : '';
-  return `תצוגה מקדימה של הפוסט${rawTag} 👇\n\n${d.caption}\n\nענה *כן* לפרסום · 'סטורי' לסטורי${alt ? ' · ' + alt : ''} · או מה לשנות.`;
+  const destLine = d.dest === 'ig' ? '\n📤 יעלה ל*אינסטגרם בלבד*.'
+    : d.dest === 'fb' ? '\n📤 יעלה ל*פייסבוק בלבד*.'
+    : d.dest === 'both' ? '\n📤 יעלה ל*אינסטגרם + פייסבוק* (כתוב "רק אינסטגרם" / "רק פייסבוק" לשנות).'
+    : '';
+  return `תצוגה מקדימה של הפוסט${rawTag} 👇\n\n${d.caption}${destLine}\n\nענה *כן* לפרסום · 'סטורי' לסטורי${alt ? ' · ' + alt : ''} · או מה לשנות.`;
 }
 
 async function handleInbound({ from, type, text, imageId, videoId }) {
@@ -69,7 +77,9 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
       }
       const caption = await ai.generateCaption(brand, text || '');
       const format = STORY_RE.test(text || '') ? 'story' : 'feed';
-      convo.draft = { mediaKind: 'image', imageUrl, originalUrl, enhancedUrl, raw, caption, format };
+      const hasFb = !!(client.pageId && client.pageToken);
+      const dest = (format === 'feed' && hasFb) ? 'both' : 'ig';
+      convo.draft = { mediaKind: 'image', imageUrl, originalUrl, enhancedUrl, raw, caption, format, dest };
       convo.state = 'AWAITING_APPROVAL';
       convo.history.push({ role: 'assistant', content: 'שלחתי תצוגה מקדימה.' });
       store.setConvo(from, convo);
@@ -119,6 +129,13 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
       }
     }
 
+    // image feed: destination toggle (Instagram / Facebook / both)
+    if (!isVideo && d.format === 'feed' && client.pageId && client.pageToken) {
+      if (DEST_IG_RE.test(t) && d.dest !== 'ig') { d.dest = 'ig'; changed = true; }
+      else if (DEST_FB_RE.test(t) && d.dest !== 'fb') { d.dest = 'fb'; changed = true; }
+      else if (DEST_BOTH_RE.test(t) && d.dest !== 'both') { d.dest = 'both'; changed = true; }
+    }
+
     // format toggle
     const wantStory = STORY_RE.test(t);
     const wantReel = isVideo && REEL_RE.test(t);
@@ -147,25 +164,29 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
         if (isVideo) {
           if (d.format === 'story') ({ mediaId } = await ig.publishVideoStory({ ...auth, videoUrl: d.videoUrl }));
           else ({ mediaId } = await ig.publishReel({ ...auth, videoUrl: d.videoUrl, caption: d.caption }));
+        } else if (d.format === 'story') {
+          ({ mediaId } = await ig.publishStory({ ...auth, imageUrl: d.imageUrl }));
         } else {
-          if (d.format === 'story') ({ mediaId } = await ig.publishStory({ ...auth, imageUrl: d.imageUrl }));
-          else ({ mediaId } = await ig.publishPhoto({ ...auth, imageUrl: d.imageUrl, caption: d.caption }));
+          // feed photo — honor the chosen destination (Instagram / Facebook / both)
+          const dest = d.dest || 'ig';
+          const parts = [];
+          if (dest !== 'fb') {
+            ({ mediaId } = await ig.publishPhoto({ ...auth, imageUrl: d.imageUrl, caption: d.caption }));
+            parts.push(`אינסטגרם @${client.igUsername}`);
+          }
+          if (dest !== 'ig' && client.pageId && client.pageToken) {
+            try { await fb.publishPagePhoto({ pageId: client.pageId, pageToken: client.pageToken, imageUrl: d.imageUrl, caption: d.caption }); parts.push('דף הפייסבוק'); }
+            catch (e) { console.error('FB publish error', e.details || e.message); parts.push('(פייסבוק לא עלה — בודקים)'); }
+          }
+          store.logPost({ clientId: client.id, mediaId, caption: d.caption, format: d.format, mediaKind: d.mediaKind, raw: !!d.raw, dest });
+          convo.state = 'IDLE'; convo.draft = null; store.setConvo(from, convo);
+          await wa.sendText(from, `בוצע ✅ הפוסט עלה ל${parts.join(' + ')}. שלח לי את הבא מתי שתרצה!`);
+          return;
         }
-        // Dual post: a feed PHOTO also goes to the connected Facebook Page.
-        let fbStatus = 'none';
-        if (!isVideo && d.format === 'feed' && client.pageId && client.pageToken) {
-          try {
-            await fb.publishPagePhoto({ pageId: client.pageId, pageToken: client.pageToken, imageUrl: d.imageUrl, caption: d.caption });
-            fbStatus = 'ok';
-          } catch (e) { console.error('FB publish error', e.details || e.message); fbStatus = 'fail'; }
-        }
-        store.logPost({ clientId: client.id, mediaId, caption: d.caption, format: d.format, mediaKind: d.mediaKind, raw: !!d.raw, facebook: fbStatus });
+        store.logPost({ clientId: client.id, mediaId, caption: d.caption, format: d.format, mediaKind: d.mediaKind, raw: !!d.raw });
         convo.state = 'IDLE'; convo.draft = null; store.setConvo(from, convo);
         const suffix = d.format === 'story' ? ' (נעלם אחרי 24 שעות)' : '';
-        let dest = `אינסטגרם @${client.igUsername}`;
-        if (fbStatus === 'ok') dest += ' + דף הפייסבוק';
-        else if (fbStatus === 'fail') dest += ' (פייסבוק לא עלה — בודקים)';
-        await wa.sendText(from, `בוצע ✅ ${doneLabel(d)} עלה ל${dest}${suffix}. שלח לי את הבא מתי שתרצה!`);
+        await wa.sendText(from, `בוצע ✅ ${doneLabel(d)} עלה לאינסטגרם @${client.igUsername}${suffix}. שלח לי את הבא מתי שתרצה!`);
       } catch (e) { console.error('publish error', e.details || e.message); await wa.sendText(from, "לא הצלחתי לפרסם — סימנתי לצוות לבדוק. שום דבר לא פורסם."); }
       return;
     }
