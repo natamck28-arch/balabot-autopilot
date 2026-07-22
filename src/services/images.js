@@ -59,10 +59,14 @@ async function enhanceOpenAI(buffer, brand) {
   if (!b64) return buffer;
   let out = Buffer.from(b64, 'base64');
 
-  // resize the result back to the EXACT original dimensions (preserve ratio)
-  if (sharp && width && height) {
-    try { out = await sharp(out).resize(width, height, { fit: 'cover' }).png().toBuffer(); }
-    catch (e) { console.error('resize-back failed:', e.message); }
+  // Re-encode via sharp: preserve original dimensions AND strip the C2PA/"OpenAI"
+  // AI-provenance metadata that would otherwise trigger Meta's automatic "AI info" label.
+  if (sharp) {
+    try {
+      out = (width && height)
+        ? await sharp(out).resize(width, height, { fit: 'cover' }).png().toBuffer()
+        : await sharp(out).png().toBuffer();
+    } catch (e) { console.error('post-process/strip failed:', e.message); }
   }
   return out;
 }

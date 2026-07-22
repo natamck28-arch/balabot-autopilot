@@ -1,6 +1,7 @@
 const store = require('./db');
 const wa = require('./services/whatsapp');
 const ig = require('./services/instagram');
+const fb = require('./services/facebook');
 const images = require('./services/images');
 const ai = require('./services/ai');
 
@@ -150,10 +151,21 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
           if (d.format === 'story') ({ mediaId } = await ig.publishStory({ ...auth, imageUrl: d.imageUrl }));
           else ({ mediaId } = await ig.publishPhoto({ ...auth, imageUrl: d.imageUrl, caption: d.caption }));
         }
-        store.logPost({ clientId: client.id, mediaId, caption: d.caption, format: d.format, mediaKind: d.mediaKind, raw: !!d.raw });
+        // Dual post: a feed PHOTO also goes to the connected Facebook Page.
+        let fbStatus = 'none';
+        if (!isVideo && d.format === 'feed' && client.pageId && client.pageToken) {
+          try {
+            await fb.publishPagePhoto({ pageId: client.pageId, pageToken: client.pageToken, imageUrl: d.imageUrl, caption: d.caption });
+            fbStatus = 'ok';
+          } catch (e) { console.error('FB publish error', e.details || e.message); fbStatus = 'fail'; }
+        }
+        store.logPost({ clientId: client.id, mediaId, caption: d.caption, format: d.format, mediaKind: d.mediaKind, raw: !!d.raw, facebook: fbStatus });
         convo.state = 'IDLE'; convo.draft = null; store.setConvo(from, convo);
         const suffix = d.format === 'story' ? ' (נעלם אחרי 24 שעות)' : '';
-        await wa.sendText(from, `בוצע ✅ ${doneLabel(d)} עלה לאינסטגרם @${client.igUsername}${suffix}. שלח לי את הבא מתי שתרצה!`);
+        let dest = `אינסטגרם @${client.igUsername}`;
+        if (fbStatus === 'ok') dest += ' + דף הפייסבוק';
+        else if (fbStatus === 'fail') dest += ' (פייסבוק לא עלה — בודקים)';
+        await wa.sendText(from, `בוצע ✅ ${doneLabel(d)} עלה ל${dest}${suffix}. שלח לי את הבא מתי שתרצה!`);
       } catch (e) { console.error('publish error', e.details || e.message); await wa.sendText(from, "לא הצלחתי לפרסם — סימנתי לצוות לבדוק. שום דבר לא פורסם."); }
       return;
     }
