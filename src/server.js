@@ -37,5 +37,12 @@ if (require.main === module) {
     console.log('  Dashboard  ▸ ' + cfg.publicUrl + '/dashboard?token=' + cfg.adminToken + '\n');
     if (!cfg.meta.appId) console.log('  WARN: META_APP_ID not set - fill in .env before connecting clients.');
   });
+
+  // Keep-alive: free hosting sleeps after ~15 min idle, which delays/drops the first
+  // WhatsApp message. Self-ping every 10 min keeps the instance awake so the bot always responds.
+  if (cfg.publicUrl && cfg.publicUrl.startsWith('https://')) {
+    setInterval(() => { fetch(cfg.publicUrl + '/health').catch(() => {}); }, 10 * 60 * 1000);
+    console.log('  Keep-alive ▸ self-ping every 10 min');
+  }
 }
 module.exports = app;
