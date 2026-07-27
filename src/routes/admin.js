@@ -91,3 +91,35 @@ router.get('/export-seed', auth, (req, res) => {
   }));
   res.type('application/json').send(JSON.stringify(seed));
 });
+
+// (appended) Whisper transcription: upload an audio file, get verbose_json transcript.
+// Uses the server's OPENAI_API_KEY. GET serves a simple upload form; POST does the work.
+const multer = require('multer');
+const _upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 } });
+
+router.get('/transcribe', auth, (req, res) => {
+  const tok = req.query.token || '';
+  res.type('html').send(`<!doctype html><meta charset="utf-8"><body style="font-family:system-ui;max-width:560px;margin:40px auto">
+<h2>Transcribe audio (Whisper)</h2>
+<form method="post" action="/admin/transcribe?token=${tok}" enctype="multipart/form-data">
+  <input type="file" name="audio" accept="audio/*" required><br><br>
+  <button type="submit">Transcribe</button>
+</form><p>Returns verbose_json with segment timestamps.</p></body>`);
+});
+
+router.post('/transcribe', auth, _upload.single('audio'), async (req, res) => {
+  try {
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) return res.status(400).json({ error: 'OPENAI_API_KEY not set' });
+    if (!req.file) return res.status(400).json({ error: 'no audio file' });
+    const form = new FormData();
+    form.append('model', 'whisper-1');
+    form.append('response_format', 'verbose_json');
+    form.append('file', new Blob([req.file.buffer]), req.file.originalname || 'audio.mp3');
+    const r = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: form,
+    });
+    const j = await r.json();
+    res.status(r.ok ? 200 : 400).type('application/json').send(JSON.stringify(j));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
