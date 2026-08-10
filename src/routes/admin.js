@@ -178,3 +178,14 @@ router.get('/review-test', auth, async (req, res) => {
   } catch (e) { out.error = e.message; }
   res.json(out);
 });
+
+// Debug: what internal pages does the crawler find for a site?
+router.get('/links', auth, async (req, res) => {
+  const url = req.query.url;
+  if (!url) return res.status(400).json({ error: 'pass ?url=' });
+  try {
+    const review = require('../services/review');
+    const links = await review.fetchLinks(url);
+    res.json({ url, count: links.length, pages: [url, ...links] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});

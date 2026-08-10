@@ -58,15 +58,19 @@ function chunkText(text, size = 1500) {
 }
 
 
-function siteLinks(html, base) {
+function siteLinks(text, base) {
   let host; try { host = new URL(base).hostname; } catch { return []; }
-  const hrefs = [...String(html).matchAll(/href\s*=\s*["']([^"'#]+)["']/gi)].map(m => m[1]);
+  const urls = new Set();
+  for (const m of String(text).matchAll(/href\s*=\s*["']([^"'#]+)["']/gi)) urls.add(m[1]);
+  for (const m of String(text).matchAll(/\((https?:\/\/[^)\s]+)\)/gi)) urls.add(m[1]);
+  for (const m of String(text).matchAll(/https?:\/\/[^\s"'<>)\]]+/gi)) urls.add(m[0]);
+  const junk = /(login|signin|sign-in|register|signup|sign-up|cart|checkout|account|wp-admin|wp-login|privacy|terms|policy|cookie|\/tag\/|\/category\/|feed|rss)/i;
   const seen = new Set(); const out = [];
-  for (const h of hrefs) {
-    if (/^(mailto:|tel:|javascript:)/i.test(h)) continue;
+  for (const h of urls) {
     let u; try { u = new URL(h, base); } catch { continue; }
     if (u.hostname !== host) continue;
     if (/\.(png|jpe?g|gif|svg|pdf|zip|mp4|css|js|ico|webp|woff2?)$/i.test(u.pathname)) continue;
+    if (junk.test(u.pathname)) continue;
     const clean = (u.origin + u.pathname).replace(/\/$/, '');
     if (clean === u.origin) continue;
     if (seen.has(clean)) continue; seen.add(clean);
@@ -78,10 +82,18 @@ function siteLinks(html, base) {
 }
 
 async function fetchLinks(url) {
+  let links = [];
   try {
     const res = await fetch(url, { headers: { 'user-agent': 'Mozilla/5.0 (compatible; balabot/1.0)' }, signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined });
-    return siteLinks(await res.text(), url);
-  } catch (e) { return []; }
+    links = siteLinks(await res.text(), url);
+  } catch (e) { /* ignore */ }
+  if (links.length < 2) {
+    try {
+      const r = await fetch('https://r.jina.ai/' + url, { headers: { 'user-agent': 'Mozilla/5.0 (compatible; balabot/1.0)' }, signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined });
+      if (r.ok) links = Array.from(new Set([...links, ...siteLinks(await r.text(), url)])).slice(0, 5);
+    } catch (e) { /* ignore */ }
+  }
+  return links;
 }
 
 module.exports = { extractUrl, fetchText, shotB64, chunkText, fetchLinks };
