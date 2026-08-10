@@ -38,8 +38,25 @@ function formatForWhatsApp(text) {
   return s;
 }
 
-const sendText = (to, text) =>
-  waPost({ to, type: 'text', text: { body: formatForWhatsApp(text), preview_url: false } });
+function splitForWhatsApp(text, limit) {
+  limit = limit || 3500;
+  if (!text) return [''];
+  const lines = String(text).split('\n');
+  const out = []; let cur = '';
+  for (const line of lines) {
+    if (cur && (cur.length + 1 + line.length) > limit) { out.push(cur); cur = line; }
+    else cur = cur ? cur + '\n' + line : line;
+  }
+  if (cur) out.push(cur);
+  return out.length ? out : [''];
+}
+
+const sendText = async (to, text) => {
+  const parts = splitForWhatsApp(formatForWhatsApp(text));
+  let last;
+  for (const part of parts) last = await waPost({ to, type: 'text', text: { body: part, preview_url: false } });
+  return last;
+};
 
 const sendImageByUrl = (to, link, caption) =>
   waPost({ to, type: 'image', image: { link, caption } });

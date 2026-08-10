@@ -154,7 +154,7 @@ async function reviewChunk(brand, url, sectionText, pageNum, pageTotal, secNum, 
   const content = [];
   if (shot) content.push({ type: 'image', source: { type: 'base64', media_type: shot.mime, data: shot.b64 } });
   content.push({ type: 'text', text: `עמוד ${pageNum}/${pageTotal} | חלק ${secNum}/${secTotal}\nכתובת: ${url}${title ? ' | כותרת: ' + title : ''}\n\nטקסט החלק הנוכחי:\n${sectionText}` });
-  return await chat(system, [{ role: 'user', content }], { maxTokens: 900 });
+  return await chat(system, [{ role: 'user', content }], { maxTokens: 1200 });
 }
 
 module.exports = { generateCaption, conversationReply, approvalDecision, reviewSite, reviewChunk };
