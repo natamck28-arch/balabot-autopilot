@@ -1,15 +1,19 @@
 // AI layer — caption generation + natural conversation via Claude.
 const cfg = require('../config');
 
-async function anthropic(system, messages) {
+async function anthropic(system, messages, opts = {}) {
+  const body = { model: cfg.ai.model, max_tokens: opts.search ? 1024 : 600, system, messages };
+  if (opts.search) body.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }];
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': cfg.ai.anthropicKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: cfg.ai.model, max_tokens: 600, system, messages }),
+    body: JSON.stringify(body),
   });
   const j = await res.json();
   if (j.error) throw new Error(j.error.message);
-  return j.content?.[0]?.text?.trim() || '';
+  // With web search the reply is split across several content blocks — join all text blocks.
+  const text = (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
+  return text;
 }
 async function openai(system, messages) {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -21,9 +25,9 @@ async function openai(system, messages) {
   if (j.error) throw new Error(j.error.message);
   return j.choices?.[0]?.message?.content?.trim() || '';
 }
-async function chat(system, messages) {
+async function chat(system, messages, opts = {}) {
   try {
-    if (cfg.ai.provider === 'anthropic' && cfg.ai.anthropicKey) return await anthropic(system, messages);
+    if (cfg.ai.provider === 'anthropic' && cfg.ai.anthropicKey) return await anthropic(system, messages, opts);
     if (cfg.ai.provider === 'openai' && cfg.ai.openaiKey) return await openai(system, messages);
   } catch (e) { console.error('AI error, using fallback:', e.message); }
   return null;
@@ -91,16 +95,18 @@ ${connectionNote}
 - תן המלצות **אמיתיות, ספציפיות וישימות** מתוך מה שבאמת עובד לעסקים דומים באותה נישה: אילו סוגי תוכן עובדים (רילז / סטורי / קרוסלה), מה בדיוק לצלם או לצלם בוידאו (זוויות, רגעים, "מוצר/מנה של היום", לפני-אחרי, מאחורי הקלעים, תהליך עבודה, לקוח מרוצה), אילו הוקים/כותרות ראשונות תופסות, כמה ומתי לפרסם, ואיזה פורמט מתאים לתחום.
 - תמיד הסבר בקצרה את ה**למה** — מה גורם לתוכן כזה להגיע ליותר אנשים (שמירות, שיתופים, זמן צפייה, סקרנות, רלוונטיות מקומית).
 - דבר בגובה העיניים, שיחה זורמת, עם דוגמאות קונקרטיות מהתחום שלו — לא עצות גנריות ("תהיה עקבי"). תן 2-4 רעיונות ממוקדים שאפשר לבצע כבר מחר, וסיים בשאלה אם לעזור להפוך אחד מהם לפוסט מוכן.
-- אם אינך בטוח בפרט ספציפי (מספר מדויק, טרנד עדכני של השבוע) — אל תמציא; תן את העיקרון ותציין שכדאי לבדוק את הטרנד העדכני.
+- אם אינך בטוח בפרט ספציפי (מספר מדויק, טרנד עדכני של השבוע) — אל תמציא; תן את העיקרון ותציין שכדאי לבדוק את הטרנד העדכני. אם יש לך כלי חיפוש אינטרנט — השתמש בו לשלוף מידע עדכני ורלוונטי לתחום, ואז **גזור ממנו משמעות**: תרגם את מה שמצאת להמלצה מותאמת וקונקרטית לעסק (אל תקריא תוצאות/לינקים — תן פעולה).
 
 כללים: תשובות קצרות (1-3 משפטים), טון חם וזורם, תמיד בעברית. לעולם אל תמציא שפרסמת משהו אם לא קרה בפועל. אם שואלים שאלה כללית — ענה בחום ובאופן מועיל.`;
 }
 
+const TREND_RE = /טרנד|מה (לפרסם|כדאי|עובד)|כדאי (לצלם|לפרסם|להעלות)|רעיון|רעיונות|המלצ|ויראל|יותר (צפיות|לקוחות|עוקבים|חשיפה)|איך (אני )?(מקבל|משיג|מגדיל|אעשה|יתפרסם)|מה מצלמים|מה קורה ב|עונת|חג/i;
 async function conversationReply(brand, state, history, userText) {
   const msgs = [...(history || []).slice(-10)];
   if (userText && (!msgs.length || msgs[msgs.length - 1].content !== userText))
     msgs.push({ role: 'user', content: userText });
-  return await chat(convoSystem(brand), msgs);
+  const search = TREND_RE.test(userText || '');
+  return await chat(convoSystem(brand), msgs, { search });
 }
 
 
