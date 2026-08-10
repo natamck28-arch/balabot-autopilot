@@ -145,10 +145,10 @@ async function reviewSite(brand, url, page, shot) {
 }
 
 
-async function reviewChunk(brand, url, chunk, part, total) {
+async function reviewChunk(brand, url, text, part, total, title) {
   const biz = brand.businessType ? `תחום העסק: ${brand.businessType}. ` : '';
-  const system = `אתה יועץ שיווק, UX ו-SEO שסוקר אתר של בעל עסק ${biz}**חלק-אחר-חלק**. לפניך חלק ${part} מתוך ${total} מתוכן הדף. תן פידבק **קצר וממוקד רק על החלק הזה**: מסר ובהירות, קריאה לפעולה, SEO/ניסוח — ו-1-3 שיפורים קונקרטיים. עד ~8 שורות, עברית, כן וישים, בלי לחזור על מה שכבר נאמר בחלקים קודמים.`;
-  return await chat(system, [{ role: 'user', content: `אתר: ${url}\nחלק ${part}/${total} מהתוכן:\n${chunk}` }], { maxTokens: 650 });
+  const system = `אתה יועץ שיווק, UX ו-SEO שסוקר אתר של בעל עסק ${biz}**דף-אחר-דף (מנווט באתר)**. לפניך דף ${part} מתוך ${total} באתר. תן פידבק **קצר וממוקד רק על הדף הזה**: מה המטרה שלו, מסר ובהירות, קריאה לפעולה, SEO/ניסוח — ו-1-3 שיפורים קונקרטיים. עד ~8 שורות, עברית, כן וישים. אם הדף דל בתוכן טקסטואלי, ציין שהתוכן כנראה בתמונות/עיצוב והצע לשלוח צילום מסך לניתוח מדויק. אל תמציא תוכן שלא מופיע.`;
+  return await chat(system, [{ role: 'user', content: `דף ${part}/${total} באתר\nכתובת: ${url}${title ? ' | כותרת: ' + title : ''}\n\nתוכן הדף:\n${text}` }], { maxTokens: 650 });
 }
 
 module.exports = { generateCaption, conversationReply, approvalDecision, reviewSite, reviewChunk };

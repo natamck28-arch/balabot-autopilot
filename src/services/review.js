@@ -57,4 +57,31 @@ function chunkText(text, size = 1500) {
   return out.slice(0, 8); // cap at 8 parts
 }
 
-module.exports = { extractUrl, fetchText, shotB64, chunkText };
+
+function siteLinks(html, base) {
+  let host; try { host = new URL(base).hostname; } catch { return []; }
+  const hrefs = [...String(html).matchAll(/href\s*=\s*["']([^"'#]+)["']/gi)].map(m => m[1]);
+  const seen = new Set(); const out = [];
+  for (const h of hrefs) {
+    if (/^(mailto:|tel:|javascript:)/i.test(h)) continue;
+    let u; try { u = new URL(h, base); } catch { continue; }
+    if (u.hostname !== host) continue;
+    if (/\.(png|jpe?g|gif|svg|pdf|zip|mp4|css|js|ico|webp|woff2?)$/i.test(u.pathname)) continue;
+    const clean = (u.origin + u.pathname).replace(/\/$/, '');
+    if (clean === u.origin) continue;
+    if (seen.has(clean)) continue; seen.add(clean);
+    out.push(clean);
+  }
+  const pri = /(about|אודות|service|שירות|product|מוצר|gallery|גלרי|portfolio|תיק|contact|צור|קשר|price|מחיר|menu|תפריט|shop|חנות)/i;
+  out.sort((a, b) => (pri.test(b) ? 1 : 0) - (pri.test(a) ? 1 : 0));
+  return out.slice(0, 5);
+}
+
+async function fetchLinks(url) {
+  try {
+    const res = await fetch(url, { headers: { 'user-agent': 'Mozilla/5.0 (compatible; balabot/1.0)' }, signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined });
+    return siteLinks(await res.text(), url);
+  } catch (e) { return []; }
+}
+
+module.exports = { extractUrl, fetchText, shotB64, chunkText, fetchLinks };

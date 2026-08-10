@@ -127,40 +127,46 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
   const t = (text || '').trim();
   convo.history.push({ role: 'user', content: t });
 
-  // ---- website review (chunked): owner sends a URL -> scan part by part ----
-  // continue an in-progress scan
-  if (convo.review && convo.review.chunks && convo.review.idx < convo.review.chunks.length
+  // ---- website navigation review: scan the site page by page ----
+  // continue to the NEXT page of the site
+  if (convo.review && convo.review.pages && convo.review.idx < convo.review.pages.length
       && /(המשך|תמשיך|\bהבא\b|\bcontinue\b|\bnext\b)/i.test(t)) {
     const r = convo.review;
-    await wa.sendText(from, 'ממשיך לסרוק... 🔍');
+    const nextUrl = r.pages[r.idx];
+    await wa.sendText(from, `ממשיך לדף הבא באתר:\n${nextUrl} 🔍`);
     try {
-      const out = await ai.reviewChunk(brand, r.url, r.chunks[r.idx], r.idx + 1, r.chunks.length);
+      const page = await review.fetchText(nextUrl).catch(() => ({ title: '', text: '' }));
+      const out = await ai.reviewChunk(brand, nextUrl, page.text || '(לא הצלחתי למשוך תוכן מהדף הזה)', r.idx + 1, r.pages.length, page.title);
       r.idx++;
-      const more = r.idx < r.chunks.length
-        ? `\n\n➡️ חלק ${r.idx} מתוך ${r.chunks.length}. כתוב *המשך* לחלק הבא.`
-        : '\n\n✅ סיימתי לעבור על כל האתר.';
-      if (r.idx >= r.chunks.length) convo.review = null;
+      const more = r.idx < r.pages.length
+        ? `\n\n➡️ דף ${r.idx} מתוך ${r.pages.length}. כתוב *המשך* לדף הבא.`
+        : '\n\n✅ סיימתי לעבור על כל דפי האתר.';
+      if (r.idx >= r.pages.length) convo.review = null;
       convo.history.push({ role: 'assistant', content: out || '' });
+      if (convo.history.length > 16) convo.history = convo.history.slice(-16);
       store.setConvo(from, convo);
-      await wa.sendText(from, (out || 'לא הצלחתי לסקור את החלק הזה.') + more);
-    } catch (e) { console.error('review chunk error', e.message); await wa.sendText(from, 'נתקעתי בחלק הזה — כתוב *המשך* לנסות את הבא.'); }
+      await wa.sendText(from, (out || 'לא הצלחתי לסקור את הדף הזה.') + more);
+    } catch (e) { console.error('review page error', e.message); await wa.sendText(from, 'נתקעתי בדף הזה — כתוב *המשך* לנסות את הבא.'); }
     return;
   }
-  // start a new scan
+  // start: owner sends a URL -> scan the home page + map the site's pages
   const reviewUrl = review.extractUrl(t);
   if (reviewUrl) {
-    await wa.sendText(from, 'רגע, סורק את האתר... 🔍');
+    await wa.sendText(from, 'רגע, נכנס לאתר וסורק את דף הבית... 🔍');
     try {
+      const links = await review.fetchLinks(reviewUrl).catch(() => []);
+      const pages = [reviewUrl, ...links].filter((v, i, a) => a.indexOf(v) === i).slice(0, 6);
       const page = await review.fetchText(reviewUrl).catch(() => ({ title: '', text: '' }));
-      const chunks = review.chunkText(page.text || '', 1500);
-      if (!chunks.length) { await wa.sendText(from, 'לא הצלחתי למשוך תוכן מהדף — ודא שהקישור ציבורי, או שלח לי צילום מסך של הדף.'); return; }
-      convo.review = { url: reviewUrl, title: page.title || '', chunks, idx: 0 };
-      const out = await ai.reviewChunk(brand, reviewUrl, chunks[0], 1, chunks.length);
-      convo.review.idx = 1;
-      if (convo.review.idx >= chunks.length) convo.review = null;
+      if (!(page.text || '').trim()) { await wa.sendText(from, 'לא הצלחתי למשוך תוכן מהאתר — ודא שהקישור ציבורי, או שלח לי צילום מסך של הדף.'); return; }
+      convo.review = { url: reviewUrl, pages, idx: 1 };
+      const out = await ai.reviewChunk(brand, reviewUrl, page.text, 1, pages.length, page.title);
+      if (pages.length <= 1) convo.review = null;
       convo.history.push({ role: 'assistant', content: out || '' });
+      if (convo.history.length > 16) convo.history = convo.history.slice(-16);
       store.setConvo(from, convo);
-      const more = chunks.length > 1 ? `\n\n➡️ זה חלק 1 מתוך ${chunks.length}. כתוב *המשך* לחלק הבא.` : '';
+      const more = pages.length > 1
+        ? `\n\n🗺️ מצאתי ${pages.length} דפים באתר. סרקתי את דף הבית (1/${pages.length}). כתוב *המשך* ואכנס לדף הבא.`
+        : '';
       await wa.sendText(from, (out || 'לא הצלחתי לסקור את הדף.') + more);
     } catch (e) { console.error('review error', e.message); await wa.sendText(from, 'לא הצלחתי לפתוח את הקישור — נסה שוב, או שלח לי צילום מסך של הדף.'); }
     return;
