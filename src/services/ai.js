@@ -2,7 +2,7 @@
 const cfg = require('../config');
 
 async function anthropic(system, messages, opts = {}) {
-  const body = { model: cfg.ai.model, max_tokens: opts.maxTokens || (opts.search ? 1500 : 600), system, messages };
+  const body = { model: cfg.ai.model, max_tokens: opts.maxTokens || (opts.search ? 1500 : 1100), system, messages };
   if (opts.search) body.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }];
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
