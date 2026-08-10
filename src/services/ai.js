@@ -148,7 +148,7 @@ async function reviewSite(brand, url, page, shot) {
 async function reviewChunk(brand, url, chunk, part, total) {
   const biz = brand.businessType ? `תחום העסק: ${brand.businessType}. ` : '';
   const system = `אתה יועץ שיווק, UX ו-SEO שסוקר אתר של בעל עסק ${biz}**חלק-אחר-חלק**. לפניך חלק ${part} מתוך ${total} מתוכן הדף. תן פידבק **קצר וממוקד רק על החלק הזה**: מסר ובהירות, קריאה לפעולה, SEO/ניסוח — ו-1-3 שיפורים קונקרטיים. עד ~8 שורות, עברית, כן וישים, בלי לחזור על מה שכבר נאמר בחלקים קודמים.`;
-  return await chat(system, [{ role: 'user', content: `אתר: ${url}\nחלק ${part}/${total} מהתוכן:\n${chunk}` }], { maxTokens: 500 });
+  return await chat(system, [{ role: 'user', content: `אתר: ${url}\nחלק ${part}/${total} מהתוכן:\n${chunk}` }], { maxTokens: 650 });
 }
 
 module.exports = { generateCaption, conversationReply, approvalDecision, reviewSite, reviewChunk };
