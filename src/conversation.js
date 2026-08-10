@@ -4,6 +4,7 @@ const ig = require('./services/instagram');
 const fb = require('./services/facebook');
 const images = require('./services/images');
 const ai = require('./services/ai');
+const review = require('./services/review');
 
 const YES = /\b(yes|ok|approve|go|publish|כן|מאשר|אישור|לפרסם|פרסם|יאללה|אוקיי|אוקי|בטח|תעלה|העלה)\b/i;
 const PUBLISH_RE = /תעלה|העלה|תפרסם|לפרסם|פרסם|שגר|תשגר/i;
@@ -233,6 +234,22 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
       store.setConvo(from, convo);
       await wa.sendText(from, reply || 'סבבה 😊');
     }
+    return;
+  }
+
+  // ---- link / website review (owner sends a URL) ----
+  const reviewUrl = review.extractUrl(t);
+  if (reviewUrl) {
+    await wa.sendText(from, 'רגע, בודק את האתר... 🔍');
+    try {
+      const page = await review.fetchText(reviewUrl).catch(() => ({ title: '', text: '' }));
+      const shot = await review.shotB64(reviewUrl);
+      const out = await ai.reviewSite(brand, reviewUrl, page, shot);
+      convo.history.push({ role: 'assistant', content: out || 'סקירת אתר' });
+      if (convo.history.length > 16) convo.history = convo.history.slice(-16);
+      store.setConvo(from, convo);
+      await wa.sendText(from, out || 'לא הצלחתי לסקור את הדף כרגע — נסה שוב, או שלח קישור אחר.');
+    } catch (e) { console.error('review error', e.message); await wa.sendText(from, 'לא הצלחתי לפתוח את הקישור — ודא שהוא ציבורי ותקין, ונסה שוב.'); }
     return;
   }
 

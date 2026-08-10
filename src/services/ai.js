@@ -2,7 +2,7 @@
 const cfg = require('../config');
 
 async function anthropic(system, messages, opts = {}) {
-  const body = { model: cfg.ai.model, max_tokens: opts.search ? 1024 : 600, system, messages };
+  const body = { model: cfg.ai.model, max_tokens: opts.maxTokens || (opts.search ? 1024 : 600), system, messages };
   if (opts.search) body.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }];
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -127,4 +127,14 @@ async function approvalDecision(brand, currentCaption, userText) {
   } catch (e) { return null; }
 }
 
-module.exports = { generateCaption, conversationReply, approvalDecision };
+
+async function reviewSite(brand, url, page, shot) {
+  const biz = brand.businessType ? `תחום העסק: ${brand.businessType}. ` : '';
+  const system = `אתה יועץ שיווק דיגיטלי, UX ו-SEO. אתה סוקר אתר/דף עבור בעל עסק ${biz}ונותן סקירה מעשית, כנה ובגובה העיניים בעברית. התייחס ל: (1) מסר ובהירות — מבינים מיד מה העסק מציע ולמי? (2) קריאה לפעולה — קיימת? ברורה? (3) SEO בסיסי — כותרת/מילות מפתח/מבנה, (4) ${shot ? 'עיצוב וחוויית משתמש לפי צילום המסך — סדר, קריאוּת, אמון, התאמה למובייל' : 'מבנה ומשקל התוכן'}, (5) 3-5 שיפורים קונקרטיים לפי סדר עדיפות. קצר, ממוקד וישים — בלי סיסמאות ובלי להמציא. אם משהו לא ברור מהדף — אמור זאת.`;
+  const content = [];
+  if (shot) content.push({ type: 'image', source: { type: 'base64', media_type: shot.mime, data: shot.b64 } });
+  content.push({ type: 'text', text: `האתר: ${url}\nכותרת: ${page.title || '—'}\n\nתוכן הדף (טקסט):\n${page.text || '(לא הצלחתי למשוך טקסט מהדף)'}\n\nתן סקירה + שיפורים.` });
+  return await chat(system, [{ role: 'user', content }], { maxTokens: 1200 });
+}
+
+module.exports = { generateCaption, conversationReply, approvalDecision, reviewSite };
