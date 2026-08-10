@@ -14,6 +14,7 @@ const FEED_RE  = /\bfeed\b|בפיד|לפיד|פוסט רגיל|\bפוסט\b|רג
 // "as is" / original — do NOT recreate with AI
 const RAW_RE = /כמו שהיא|כמו שזה|כמו שהוא|בלי שיפור|בלי לשפר|לא לשפר|אל תשפר|בלי לשנות|בלי שינוי|בלי לגעת|מקורי|מקורית|המקורי|as[ -]?is|original|raw/i;
 const ENHANCE_RE = /תשפר|לשפר|שיפור|תשדרג|שדרג|enhance|improve/i;
+const REVIEW_INTENT = /תסקור|תבקר|ביקורת|פידבק|משוב|מה דעת|תחווה דע|תבדוק לי|feedback|review|חוות דעת/i;
 // Facebook posting needs the pages_manage_posts permission + a fresh connect; off until enabled.
 const FB_ENABLED = process.env.FB_ENABLED === 'true';
 // destination for a feed photo: Instagram only / Facebook only / both
@@ -71,6 +72,19 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
     await wa.sendText(from, "קיבלתי 📸 רגע, מכין לך תצוגה מקדימה...");
     try {
       const { buffer, mime } = await wa.downloadMedia(imageId);
+      // owner sent a screenshot and asked for feedback -> visual review (not a post)
+      if (REVIEW_INTENT.test(text || '')) {
+        await wa.sendText(from, 'רגע, מסתכל על מה ששלחת... 🔍');
+        try {
+          const shot = { b64: buffer.toString('base64'), mime: (mime && mime.includes('png')) ? 'image/png' : 'image/jpeg' };
+          const out = await ai.reviewSite(brand, '(צילום מסך ששלח בעל העסק)', { title: '', text: '' }, shot);
+          convo.history.push({ role: 'assistant', content: out || 'סקירה' });
+          if (convo.history.length > 16) convo.history = convo.history.slice(-16);
+          store.setConvo(from, convo);
+          await wa.sendText(from, out || 'לא הצלחתי לנתח כרגע — נסה שוב.');
+        } catch (e) { console.error('image review error', e.message); await wa.sendText(from, 'לא הצלחתי לנתח את התמונה כרגע — נסה שוב.'); }
+        return;
+      }
       const ext = images.extFromMime(mime) === 'mov' ? 'jpg' : (mime && mime.includes('png') ? 'png' : 'jpg');
       const originalUrl = images.hostPublicly(buffer, ext);   // always keep the untouched original
       const rawWanted = RAW_RE.test(text || '');
