@@ -130,7 +130,7 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
   // ---- website review (chunked): owner sends a URL -> scan part by part ----
   // continue an in-progress scan
   if (convo.review && convo.review.chunks && convo.review.idx < convo.review.chunks.length
-      && /^\s*(המשך|תמשיך|עוד|הבא|continue|next)\b/i.test(t)) {
+      && /(המשך|תמשיך|\bהבא\b|\bcontinue\b|\bnext\b)/i.test(t)) {
     const r = convo.review;
     await wa.sendText(from, 'ממשיך לסרוק... 🔍');
     try {
