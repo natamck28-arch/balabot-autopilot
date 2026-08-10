@@ -115,4 +115,41 @@ async function shotFromUrl(url) {
   } catch (e) { console.error('screenshot failed', e.message); return null; }
 }
 
-module.exports = { extractUrl, fetchText, shotB64, chunkText, fetchLinks, shotFromUrl };
+
+// Render a URL with JS (ScrapingAnt, needs RENDER_HTML_KEY) -> full rendered HTML.
+async function renderHtml(url) {
+  const key = process.env.RENDER_HTML_KEY;
+  if (!key) return null;
+  try {
+    const api = 'https://api.scrapingant.com/v2/general?browser=true&x-api-key=' + encodeURIComponent(key) + '&url=' + encodeURIComponent(url);
+    const r = await fetch(api, { signal: AbortSignal.timeout ? AbortSignal.timeout(25000) : undefined });
+    if (!r.ok) { console.error('scrapingant status', r.status); return null; }
+    return await r.text();
+  } catch (e) { console.error('renderHtml failed:', e.message); return null; }
+}
+
+function stripHtml(html) {
+  const title = ((String(html).match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '').trim();
+  let body = String(html)
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+  if (body.length > 7000) body = body.slice(0, 7000);
+  return { title, text: body };
+}
+
+// One rendered fetch -> both text and internal links (best for SPA sites).
+async function fetchPage(url) {
+  const html = await renderHtml(url);
+  if (html) {
+    const { title, text } = stripHtml(html);
+    const links = siteLinks(html, url);
+    if (text.length > 60 || links.length) return { title, text, links };
+  }
+  const t = await fetchText(url).catch(() => ({ title: '', text: '' }));
+  const links = await fetchLinks(url).catch(() => []);
+  return { title: t.title, text: t.text, links };
+}
+
+module.exports = { extractUrl, fetchText, shotB64, chunkText, fetchLinks, shotFromUrl, renderHtml, fetchPage };

@@ -153,9 +153,10 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
         r.pageIdx++;
         const nextUrl = r.pages[r.pageIdx];
         await wa.sendText(from, `נכנס לעמוד הבא באתר:\n${nextUrl} 🔍`);
-        const page = await review.fetchText(nextUrl).catch(() => ({ title: '', text: '' }));
+        const page = await review.fetchPage(nextUrl).catch(() => ({ title: '', text: '', links: [] }));
         r.url = nextUrl; r.title = page.title || '';
         r.chunks = review.chunkText(page.text || '', 1200);
+        for (const l of (page.links || [])) if (!r.pages.includes(l) && r.pages.length < 12) r.pages.push(l);
         if (!r.chunks.length) r.chunks = ['(לא הצלחתי למשוך תוכן טקסטואלי מהעמוד הזה)'];
         r.shot = await review.shotFromUrl(nextUrl).catch(() => null);
         const out = await ai.reviewChunk(brand, nextUrl, r.chunks[0], r.pageIdx + 1, r.pages.length, 1, r.chunks.length, r.title, r.shot);
@@ -182,9 +183,8 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
   if (reviewUrl) {
     await wa.sendText(from, 'רגע, נכנס לאתר, ממפה את הדפים וסורק את דף הבית... 🔍');
     try {
-      const links = await review.fetchLinks(reviewUrl).catch(() => []);
-      const pages = [reviewUrl, ...links].filter((v, i, a) => a.indexOf(v) === i).slice(0, 8);
-      const page = await review.fetchText(reviewUrl).catch(() => ({ title: '', text: '' }));
+      const page = await review.fetchPage(reviewUrl).catch(() => ({ title: '', text: '', links: [] }));
+      const pages = [reviewUrl, ...(page.links || [])].filter((v, i, a) => a.indexOf(v) === i).slice(0, 10);
       const chunks = review.chunkText(page.text || '', 1200);
       if (!chunks.length) { await wa.sendText(from, 'לא הצלחתי למשוך תוכן מהאתר — ודא שהקישור ציבורי, או שלח לי צילום מסך של הדף.'); return; }
       const shot = await review.shotFromUrl(reviewUrl).catch(() => null);
