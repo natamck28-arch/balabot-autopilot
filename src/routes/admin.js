@@ -169,7 +169,7 @@ router.get('/review-test', auth, async (req, res) => {
     try { page = await review.fetchText(url); } catch (e) { out.fetchErr = e.message; }
     out.pageTitle = page.title; out.pageTextLen = (page.text || '').length;
     let shot = null;
-    try { shot = await review.shotB64(url); } catch (e) { out.shotErr = e.message; }
+    if (req.query.shot === '1') { try { shot = await review.shotB64(url); } catch (e) { out.shotErr = e.message; } }
     out.shotOk = !!shot; if (shot) out.shotBytes = Buffer.from(shot.b64, 'base64').length;
     const brand = { businessName: 'עסק', businessType: req.query.type || '' };
     const rev = await ai.reviewSite(brand, url, page, shot);

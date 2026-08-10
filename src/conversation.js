@@ -243,7 +243,7 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
     await wa.sendText(from, 'רגע, בודק את האתר... 🔍');
     try {
       const page = await review.fetchText(reviewUrl).catch(() => ({ title: '', text: '' }));
-      const shot = await review.shotB64(reviewUrl);
+      const shot = null; // visual screenshot disabled (too slow/unreliable on free tier) — text review is fast & reliable
       const out = await ai.reviewSite(brand, reviewUrl, page, shot);
       convo.history.push({ role: 'assistant', content: out || 'סקירת אתר' });
       if (convo.history.length > 16) convo.history = convo.history.slice(-16);
