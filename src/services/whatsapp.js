@@ -26,8 +26,20 @@ async function waPost(body) {
   return json;
 }
 
+const RLM = '\u200F';
+function formatForWhatsApp(text) {
+  if (!text) return text;
+  let s = String(text);
+  s = s.replace(/^#{1,6}\s*/gm, '');          // drop markdown headers (##) — WhatsApp shows them literally
+  s = s.replace(/\*\*(.+?)\*\*/g, '*$1*');  // **bold** -> *bold* (WhatsApp bold is single *)
+  s = s.replace(/^\s*[-–]\s+/gm, '• ');       // dash bullets -> •
+  // RTL: prepend a right-to-left mark to any line with Hebrew so mixed he/en/URLs don't jump
+  s = s.split('\n').map(l => /[\u0590-\u05FF]/.test(l) ? RLM + l : l).join('\n');
+  return s;
+}
+
 const sendText = (to, text) =>
-  waPost({ to, type: 'text', text: { body: text, preview_url: false } });
+  waPost({ to, type: 'text', text: { body: formatForWhatsApp(text), preview_url: false } });
 
 const sendImageByUrl = (to, link, caption) =>
   waPost({ to, type: 'image', image: { link, caption } });
