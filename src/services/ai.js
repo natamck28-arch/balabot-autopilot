@@ -2,7 +2,7 @@
 const cfg = require('../config');
 
 async function anthropic(system, messages, opts = {}) {
-  const body = { model: cfg.ai.model, max_tokens: opts.maxTokens || (opts.search ? 1024 : 600), system, messages };
+  const body = { model: cfg.ai.model, max_tokens: opts.maxTokens || (opts.search ? 1500 : 600), system, messages };
   if (opts.search) body.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }];
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -105,8 +105,11 @@ async function conversationReply(brand, state, history, userText) {
   const msgs = [...(history || []).slice(-10)];
   if (userText && (!msgs.length || msgs[msgs.length - 1].content !== userText))
     msgs.push({ role: 'user', content: userText });
-  const search = TREND_RE.test(userText || '');
-  return await chat(convoSystem(brand), msgs, { search });
+  const wantSearch = TREND_RE.test(userText || '');
+  let out = await chat(convoSystem(brand), msgs, { search: wantSearch });
+  // web-search can occasionally return no clean text — never leave the user empty: retry without it.
+  if (wantSearch && (!out || !out.trim())) out = await chat(convoSystem(brand), msgs, {});
+  return out;
 }
 
 
