@@ -31,7 +31,7 @@ const cfg = {
     model: process.env.AI_MODEL || 'claude-sonnet-5',
   },
   images: {
-    provider: process.env.IMAGE_PROVIDER || 'none',
+    provider: process.env.IMAGE_PROVIDER || (process.env.OPENAI_API_KEY ? 'openai' : 'none'),
     replicateToken: process.env.REPLICATE_API_TOKEN,
   },
   billing: {

@@ -123,3 +123,32 @@ router.post('/transcribe', auth, _upload.single('audio'), async (req, res) => {
     res.status(r.ok ? 200 : 400).type('application/json').send(JSON.stringify(j));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// Diagnose the image-enhancement pipeline: provider, key presence, and a LIVE
+// gpt-image test so we see the exact reason it's not upgrading photos.
+router.get('/enhance-check', auth, async (req, res) => {
+  const out = {
+    provider: cfg.images.provider,
+    hasOpenAIKey: !!process.env.OPENAI_API_KEY,
+    imageProviderEnv: process.env.IMAGE_PROVIDER || '(unset)',
+  };
+  try {
+    let sharp = null; try { sharp = require('sharp'); } catch (_) {}
+    if (!sharp) { out.test = 'skipped: sharp not available'; return res.json(out); }
+    if (!process.env.OPENAI_API_KEY) { out.test = 'skipped: no OPENAI_API_KEY'; return res.json(out); }
+    const png = await sharp({ create: { width: 256, height: 256, channels: 3, background: { r: 180, g: 120, b: 90 } } }).png().toBuffer();
+    const form = new FormData();
+    form.append('model', 'gpt-image-1');
+    form.append('prompt', 'Improve the photographic quality only.');
+    form.append('size', '1024x1024');
+    form.append('image', new Blob([png], { type: 'image/png' }), 'photo.png');
+    const t0 = Date.now();
+    const r = await fetch('https://api.openai.com/v1/images/edits', { method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: form });
+    const j = await r.json();
+    out.httpStatus = r.status;
+    out.ms = Date.now() - t0;
+    if (j.error) out.apiError = { type: j.error.type, code: j.error.code, message: j.error.message };
+    else out.test = j.data?.[0]?.b64_json ? 'OK: gpt-image returned an image ✅' : 'no image + no error (unexpected)';
+  } catch (e) { out.exception = e.message; }
+  res.json(out);
+});
