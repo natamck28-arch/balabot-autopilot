@@ -127,48 +127,78 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
   const t = (text || '').trim();
   convo.history.push({ role: 'user', content: t });
 
-  // ---- website navigation review: scan the site page by page ----
-  // continue to the NEXT page of the site
-  if (convo.review && convo.review.pages && convo.review.idx < convo.review.pages.length
-      && /(המשך|תמשיך|\bהבא\b|\bcontinue\b|\bnext\b)/i.test(t)) {
+  // ---- website review: navigate page-by-page, and each page section-by-section ----
+  if (convo.review && convo.review.pages && /(המשך|תמשיך|\bהבא\b|\bcontinue\b|\bnext\b)/i.test(t)) {
     const r = convo.review;
-    const nextUrl = r.pages[r.idx];
-    await wa.sendText(from, `ממשיך לדף הבא באתר:\n${nextUrl} 🔍`);
     try {
-      const page = await review.fetchText(nextUrl).catch(() => ({ title: '', text: '' }));
-      const shot = await review.shotFromUrl(nextUrl).catch(() => null);
-      const out = await ai.reviewChunk(brand, nextUrl, page.text || '(לא הצלחתי למשוך תוכן מהדף הזה)', r.idx + 1, r.pages.length, page.title, shot);
-      r.idx++;
-      const more = r.idx < r.pages.length
-        ? `\n\n➡️ דף ${r.idx} מתוך ${r.pages.length}. כתוב *המשך* לדף הבא.`
-        : '\n\n✅ סיימתי לעבור על כל דפי האתר.';
-      if (r.idx >= r.pages.length) convo.review = null;
-      convo.history.push({ role: 'assistant', content: out || '' });
-      if (convo.history.length > 16) convo.history = convo.history.slice(-16);
-      store.setConvo(from, convo);
-      await wa.sendText(from, (out || 'לא הצלחתי לסקור את הדף הזה.') + more);
-    } catch (e) { console.error('review page error', e.message); await wa.sendText(from, 'נתקעתי בדף הזה — כתוב *המשך* לנסות את הבא.'); }
-    return;
+      // 1) more sections in the current page?
+      if (r.chunks && r.chunkIdx < r.chunks.length) {
+        await wa.sendText(from, 'ממשיך לחלק הבא בעמוד... 🔍');
+        const out = await ai.reviewChunk(brand, r.url, r.chunks[r.chunkIdx], r.pageIdx + 1, r.pages.length, r.chunkIdx + 1, r.chunks.length, r.title, r.shot);
+        r.chunkIdx++;
+        const pageDone = r.chunkIdx >= r.chunks.length;
+        const allDone = pageDone && r.pageIdx + 1 >= r.pages.length;
+        const more = allDone ? '\n\n✅ סיימתי לסרוק את כל האתר לעומק.'
+          : pageDone ? `\n\n✅ סיימתי את עמוד ${r.pageIdx + 1}. כתוב *המשך* לעמוד הבא.`
+          : `\n\n➡️ עמוד ${r.pageIdx + 1}/${r.pages.length} · חלק ${r.chunkIdx}/${r.chunks.length}. כתוב *המשך*.`;
+        if (allDone) convo.review = null;
+        convo.history.push({ role: 'assistant', content: out || '' });
+        if (convo.history.length > 16) convo.history = convo.history.slice(-16);
+        store.setConvo(from, convo);
+        await wa.sendText(from, (out || 'לא הצלחתי לסקור את החלק הזה.') + more);
+        return;
+      }
+      // 2) move to the next page of the site
+      if (r.pageIdx + 1 < r.pages.length) {
+        r.pageIdx++;
+        const nextUrl = r.pages[r.pageIdx];
+        await wa.sendText(from, `נכנס לעמוד הבא באתר:\n${nextUrl} 🔍`);
+        const page = await review.fetchText(nextUrl).catch(() => ({ title: '', text: '' }));
+        r.url = nextUrl; r.title = page.title || '';
+        r.chunks = review.chunkText(page.text || '', 1200);
+        if (!r.chunks.length) r.chunks = ['(לא הצלחתי למשוך תוכן טקסטואלי מהעמוד הזה)'];
+        r.shot = await review.shotFromUrl(nextUrl).catch(() => null);
+        const out = await ai.reviewChunk(brand, nextUrl, r.chunks[0], r.pageIdx + 1, r.pages.length, 1, r.chunks.length, r.title, r.shot);
+        r.chunkIdx = 1;
+        const pageDone = r.chunkIdx >= r.chunks.length;
+        const allDone = pageDone && r.pageIdx + 1 >= r.pages.length;
+        const more = allDone ? '\n\n✅ סיימתי לסרוק את כל האתר לעומק.'
+          : pageDone ? `\n\n✅ סיימתי את עמוד ${r.pageIdx + 1}. כתוב *המשך* לעמוד הבא.`
+          : `\n\n➡️ עמוד ${r.pageIdx + 1}/${r.pages.length} · חלק 1/${r.chunks.length}. כתוב *המשך*.`;
+        if (allDone) convo.review = null;
+        convo.history.push({ role: 'assistant', content: out || '' });
+        if (convo.history.length > 16) convo.history = convo.history.slice(-16);
+        store.setConvo(from, convo);
+        await wa.sendText(from, (out || 'לא הצלחתי לסקור את העמוד הזה.') + more);
+        return;
+      }
+      convo.review = null; store.setConvo(from, convo);
+      await wa.sendText(from, '✅ כבר עברתי על כל האתר. שלח לי URL חדש לסקירה נוספת.');
+      return;
+    } catch (e) { console.error('review continue error', e.message); await wa.sendText(from, 'נתקעתי כאן — כתוב *המשך* לנסות שוב.'); return; }
   }
-  // start: owner sends a URL -> scan the home page + map the site's pages
+  // start: owner sends a URL -> map the site + scan home page, section 1
   const reviewUrl = review.extractUrl(t);
   if (reviewUrl) {
-    await wa.sendText(from, 'רגע, נכנס לאתר וסורק את דף הבית... 🔍');
+    await wa.sendText(from, 'רגע, נכנס לאתר, ממפה את הדפים וסורק את דף הבית... 🔍');
     try {
       const links = await review.fetchLinks(reviewUrl).catch(() => []);
-      const pages = [reviewUrl, ...links].filter((v, i, a) => a.indexOf(v) === i).slice(0, 6);
+      const pages = [reviewUrl, ...links].filter((v, i, a) => a.indexOf(v) === i).slice(0, 8);
       const page = await review.fetchText(reviewUrl).catch(() => ({ title: '', text: '' }));
-      if (!(page.text || '').trim()) { await wa.sendText(from, 'לא הצלחתי למשוך תוכן מהאתר — ודא שהקישור ציבורי, או שלח לי צילום מסך של הדף.'); return; }
-      convo.review = { url: reviewUrl, pages, idx: 1 };
+      const chunks = review.chunkText(page.text || '', 1200);
+      if (!chunks.length) { await wa.sendText(from, 'לא הצלחתי למשוך תוכן מהאתר — ודא שהקישור ציבורי, או שלח לי צילום מסך של הדף.'); return; }
       const shot = await review.shotFromUrl(reviewUrl).catch(() => null);
-      const out = await ai.reviewChunk(brand, reviewUrl, page.text, 1, pages.length, page.title, shot);
-      if (pages.length <= 1) convo.review = null;
+      convo.review = { pages, pageIdx: 0, url: reviewUrl, title: page.title || '', chunks, chunkIdx: 1, shot };
+      const out = await ai.reviewChunk(brand, reviewUrl, chunks[0], 1, pages.length, 1, chunks.length, page.title, shot);
+      const pageDone = 1 >= chunks.length;
+      const allDone = pageDone && pages.length <= 1;
+      if (allDone) convo.review = null;
       convo.history.push({ role: 'assistant', content: out || '' });
       if (convo.history.length > 16) convo.history = convo.history.slice(-16);
       store.setConvo(from, convo);
-      const more = pages.length > 1
-        ? `\n\n🗺️ מצאתי ${pages.length} דפים באתר. סרקתי את דף הבית (1/${pages.length}). כתוב *המשך* ואכנס לדף הבא.`
-        : '';
+      const more = allDone ? ''
+        : !pageDone ? `\n\n🗺️ מצאתי ${pages.length} דפים באתר. עמוד 1/${pages.length} · חלק 1/${chunks.length}. כתוב *המשך* לחלק הבא.`
+        : `\n\n🗺️ מצאתי ${pages.length} דפים באתר. סיימתי את דף הבית. כתוב *המשך* לעמוד הבא.`;
       await wa.sendText(from, (out || 'לא הצלחתי לסקור את הדף.') + more);
     } catch (e) { console.error('review error', e.message); await wa.sendText(from, 'לא הצלחתי לפתוח את הקישור — נסה שוב, או שלח לי צילום מסך של הדף.'); }
     return;

@@ -145,13 +145,14 @@ async function reviewSite(brand, url, page, shot) {
 }
 
 
-async function reviewChunk(brand, url, text, part, total, title, shot) {
+async function reviewChunk(brand, url, sectionText, pageNum, pageTotal, secNum, secTotal, title, shot) {
   const biz = brand.businessType ? `תחום העסק: ${brand.businessType}. ` : '';
-  const system = `אתה יועץ שיווק, UX ו-SEO שסוקר אתר של בעל עסק ${biz}**דף-אחר-דף**. לפניך דף ${part} מתוך ${total} באתר${shot ? ', כולל **צילום מסך** של הדף' : ''}. תן פידבק **קצר וממוקד רק על הדף הזה**: מטרת הדף, מסר ובהירות, קריאה לפעולה, SEO/ניסוח${shot ? ', ו**עיצוב וחוויית משתמש לפי צילום המסך** (לייאאוט, קריאוּת, בולטות ה-CTA, אמון, התאמה למובייל)' : ''} — ו-1-3 שיפורים קונקרטיים. עד ~10 שורות, עברית, כן וישים, בלי להמציא.`;
+  const system = `אתה יועץ שיווק, UX ו-SEO שסוקר אתר של בעל עסק ${biz}**בקפדנות, דף-אחר-דף ובכל דף חלק-אחר-חלק**. כרגע אתה מנתח את **עמוד ${pageNum} מתוך ${pageTotal}, חלק ${secNum} מתוך ${secTotal}** של אותו עמוד${shot ? ' (מצורף צילום מסך של העמוד)' : ''}.
+נתח **לעומק ורק את החלק הזה**: עבור על כל אלמנט שמופיע כאן — כותרות, טקסטים, מסרים, כפתורים/קריאות-לפעולה, מילות מפתח/SEO${shot ? ', ולפי צילום המסך גם עיצוב, לייאאוט, צבעים, קריאוּת, היררכיה ויזואלית, בולטות ה-CTA, אמון והתאמה למובייל של האזור הרלוונטי' : ''}. לכל נקודה — ציין מה יש, מה חסר/בעייתי, ושיפור קונקרטי. היה יסודי אך תמציתי (עד ~12 שורות). עברית, כן, בלי להמציא דברים שלא מופיעים.`;
   const content = [];
   if (shot) content.push({ type: 'image', source: { type: 'base64', media_type: shot.mime, data: shot.b64 } });
-  content.push({ type: 'text', text: `דף ${part}/${total} באתר\nכתובת: ${url}${title ? ' | כותרת: ' + title : ''}\n\nתוכן טקסטואלי מהדף:\n${text}` });
-  return await chat(system, [{ role: 'user', content }], { maxTokens: 800 });
+  content.push({ type: 'text', text: `עמוד ${pageNum}/${pageTotal} | חלק ${secNum}/${secTotal}\nכתובת: ${url}${title ? ' | כותרת: ' + title : ''}\n\nטקסט החלק הנוכחי:\n${sectionText}` });
+  return await chat(system, [{ role: 'user', content }], { maxTokens: 900 });
 }
 
 module.exports = { generateCaption, conversationReply, approvalDecision, reviewSite, reviewChunk };

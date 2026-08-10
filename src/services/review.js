@@ -103,7 +103,7 @@ async function shotFromUrl(url) {
   if (!key) return null;
   const api = 'https://api.screenshotone.com/take?access_key=' + encodeURIComponent(key)
     + '&url=' + encodeURIComponent(url)
-    + '&format=jpg&viewport_width=1280&full_page=false&block_ads=true&block_cookie_banners=true&cache=true&image_quality=80';
+    + '&format=jpg&viewport_width=1280&full_page=true&block_ads=true&block_cookie_banners=true&cache=true&image_quality=80';
   try {
     const r = await fetch(api, { signal: AbortSignal.timeout ? AbortSignal.timeout(22000) : undefined });
     if (!r.ok) { console.error('screenshot api status', r.status); return null; }
