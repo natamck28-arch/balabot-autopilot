@@ -145,3 +145,14 @@ router.get('/enhance-check', auth, async (req, res) => {
   } catch (e) { out.exception = e.message; }
   res.json(out);
 });
+
+// Debug: see the brain's actual reply to a message (grounded testing).
+router.get('/brain', auth, async (req, res) => {
+  try {
+    const ai = require('../services/ai');
+    const q = req.query.q || 'תציג את עצמך';
+    const brand = { businessName: 'עסק לדוגמה', businessType: req.query.type || '', igUserId: 'x', igUsername: 'demo' };
+    const reply = await ai.conversationReply(brand, 'CHATTING', [], q);
+    res.json({ q, replyLength: (reply || '').length, reply: reply || '(EMPTY -> would fall back)' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
