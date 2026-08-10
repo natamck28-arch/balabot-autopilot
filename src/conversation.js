@@ -127,22 +127,44 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
   const t = (text || '').trim();
   convo.history.push({ role: 'user', content: t });
 
-  // ---- link / website review (owner sends a URL) ----
-  const reviewUrl = review.extractUrl(t);
-  if (reviewUrl) {
-    await wa.sendText(from, 'רגע, בודק את האתר... 🔍');
+  // ---- website review (chunked): owner sends a URL -> scan part by part ----
+  // continue an in-progress scan
+  if (convo.review && convo.review.chunks && convo.review.idx < convo.review.chunks.length
+      && /^\s*(המשך|תמשיך|עוד|הבא|continue|next)\b/i.test(t)) {
+    const r = convo.review;
+    await wa.sendText(from, 'ממשיך לסרוק... 🔍');
     try {
-      const page = await review.fetchText(reviewUrl).catch(() => ({ title: '', text: '' }));
-      const shot = null; // visual screenshot disabled (too slow/unreliable on free tier) — text review is fast & reliable
-      const out = await ai.reviewSite(brand, reviewUrl, page, shot);
-      convo.history.push({ role: 'assistant', content: out || 'סקירת אתר' });
-      if (convo.history.length > 16) convo.history = convo.history.slice(-16);
+      const out = await ai.reviewChunk(brand, r.url, r.chunks[r.idx], r.idx + 1, r.chunks.length);
+      r.idx++;
+      const more = r.idx < r.chunks.length
+        ? `\n\n➡️ חלק ${r.idx} מתוך ${r.chunks.length}. כתוב *המשך* לחלק הבא.`
+        : '\n\n✅ סיימתי לעבור על כל האתר.';
+      if (r.idx >= r.chunks.length) convo.review = null;
+      convo.history.push({ role: 'assistant', content: out || '' });
       store.setConvo(from, convo);
-      await wa.sendText(from, out || 'לא הצלחתי לסקור את הדף כרגע — נסה שוב, או שלח קישור אחר.');
-    } catch (e) { console.error('review error', e.message); await wa.sendText(from, 'לא הצלחתי לפתוח את הקישור — ודא שהוא ציבורי ותקין, ונסה שוב.'); }
+      await wa.sendText(from, (out || 'לא הצלחתי לסקור את החלק הזה.') + more);
+    } catch (e) { console.error('review chunk error', e.message); await wa.sendText(from, 'נתקעתי בחלק הזה — כתוב *המשך* לנסות את הבא.'); }
     return;
   }
-
+  // start a new scan
+  const reviewUrl = review.extractUrl(t);
+  if (reviewUrl) {
+    await wa.sendText(from, 'רגע, סורק את האתר... 🔍');
+    try {
+      const page = await review.fetchText(reviewUrl).catch(() => ({ title: '', text: '' }));
+      const chunks = review.chunkText(page.text || '', 1500);
+      if (!chunks.length) { await wa.sendText(from, 'לא הצלחתי למשוך תוכן מהדף — ודא שהקישור ציבורי, או שלח לי צילום מסך של הדף.'); return; }
+      convo.review = { url: reviewUrl, title: page.title || '', chunks, idx: 0 };
+      const out = await ai.reviewChunk(brand, reviewUrl, chunks[0], 1, chunks.length);
+      convo.review.idx = 1;
+      if (convo.review.idx >= chunks.length) convo.review = null;
+      convo.history.push({ role: 'assistant', content: out || '' });
+      store.setConvo(from, convo);
+      const more = chunks.length > 1 ? `\n\n➡️ זה חלק 1 מתוך ${chunks.length}. כתוב *המשך* לחלק הבא.` : '';
+      await wa.sendText(from, (out || 'לא הצלחתי לסקור את הדף.') + more);
+    } catch (e) { console.error('review error', e.message); await wa.sendText(from, 'לא הצלחתי לפתוח את הקישור — נסה שוב, או שלח לי צילום מסך של הדף.'); }
+    return;
+  }
 
   // ---- approval flow ----
   if (convo.state === 'AWAITING_APPROVAL' && convo.draft) {

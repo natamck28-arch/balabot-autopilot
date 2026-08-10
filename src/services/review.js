@@ -48,4 +48,13 @@ async function shotB64(url) {
   } catch (e) { console.error('shot failed:', e.message); return null; }
 }
 
-module.exports = { extractUrl, fetchText, shotB64 };
+
+function chunkText(text, size = 1500) {
+  text = (text || '').trim();
+  if (!text) return [];
+  const out = [];
+  for (let i = 0; i < text.length; i += size) out.push(text.slice(i, i + size));
+  return out.slice(0, 8); // cap at 8 parts
+}
+
+module.exports = { extractUrl, fetchText, shotB64, chunkText };
