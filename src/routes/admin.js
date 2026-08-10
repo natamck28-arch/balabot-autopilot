@@ -185,7 +185,8 @@ router.get('/links', auth, async (req, res) => {
   if (!url) return res.status(400).json({ error: 'pass ?url=' });
   try {
     const review = require('../services/review');
-    const links = await review.fetchLinks(url);
-    res.json({ url, count: links.length, pages: [url, ...links] });
+    const page = await review.fetchPage(url);
+    const links = page.links || [];
+    res.json({ url, count: links.length, textLen: (page.text||'').length, pages: [url, ...links] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
