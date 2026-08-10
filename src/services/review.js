@@ -26,7 +26,7 @@ async function fetchText(url) {
 async function shotB64(url) {
   try {
     const shot = 'https://image.thum.io/get/width/1200/crop/1600/' + url;
-    const res = await fetch(shot, { signal: AbortSignal.timeout ? AbortSignal.timeout(22000) : undefined });
+    const res = await fetch(shot, { signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined });
     if (!res.ok) return null;
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length < 3000) return null; // too small = render placeholder / failed
