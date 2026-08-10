@@ -145,10 +145,13 @@ async function reviewSite(brand, url, page, shot) {
 }
 
 
-async function reviewChunk(brand, url, text, part, total, title) {
+async function reviewChunk(brand, url, text, part, total, title, shot) {
   const biz = brand.businessType ? `תחום העסק: ${brand.businessType}. ` : '';
-  const system = `אתה יועץ שיווק, UX ו-SEO שסוקר אתר של בעל עסק ${biz}**דף-אחר-דף (מנווט באתר)**. לפניך דף ${part} מתוך ${total} באתר. תן פידבק **קצר וממוקד רק על הדף הזה**: מה המטרה שלו, מסר ובהירות, קריאה לפעולה, SEO/ניסוח — ו-1-3 שיפורים קונקרטיים. עד ~8 שורות, עברית, כן וישים. אם הדף דל בתוכן טקסטואלי, ציין שהתוכן כנראה בתמונות/עיצוב והצע לשלוח צילום מסך לניתוח מדויק. אל תמציא תוכן שלא מופיע.`;
-  return await chat(system, [{ role: 'user', content: `דף ${part}/${total} באתר\nכתובת: ${url}${title ? ' | כותרת: ' + title : ''}\n\nתוכן הדף:\n${text}` }], { maxTokens: 650 });
+  const system = `אתה יועץ שיווק, UX ו-SEO שסוקר אתר של בעל עסק ${biz}**דף-אחר-דף**. לפניך דף ${part} מתוך ${total} באתר${shot ? ', כולל **צילום מסך** של הדף' : ''}. תן פידבק **קצר וממוקד רק על הדף הזה**: מטרת הדף, מסר ובהירות, קריאה לפעולה, SEO/ניסוח${shot ? ', ו**עיצוב וחוויית משתמש לפי צילום המסך** (לייאאוט, קריאוּת, בולטות ה-CTA, אמון, התאמה למובייל)' : ''} — ו-1-3 שיפורים קונקרטיים. עד ~10 שורות, עברית, כן וישים, בלי להמציא.`;
+  const content = [];
+  if (shot) content.push({ type: 'image', source: { type: 'base64', media_type: shot.mime, data: shot.b64 } });
+  content.push({ type: 'text', text: `דף ${part}/${total} באתר\nכתובת: ${url}${title ? ' | כותרת: ' + title : ''}\n\nתוכן טקסטואלי מהדף:\n${text}` });
+  return await chat(system, [{ role: 'user', content }], { maxTokens: 800 });
 }
 
 module.exports = { generateCaption, conversationReply, approvalDecision, reviewSite, reviewChunk };

@@ -136,7 +136,8 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
     await wa.sendText(from, `ממשיך לדף הבא באתר:\n${nextUrl} 🔍`);
     try {
       const page = await review.fetchText(nextUrl).catch(() => ({ title: '', text: '' }));
-      const out = await ai.reviewChunk(brand, nextUrl, page.text || '(לא הצלחתי למשוך תוכן מהדף הזה)', r.idx + 1, r.pages.length, page.title);
+      const shot = await review.shotFromUrl(nextUrl).catch(() => null);
+      const out = await ai.reviewChunk(brand, nextUrl, page.text || '(לא הצלחתי למשוך תוכן מהדף הזה)', r.idx + 1, r.pages.length, page.title, shot);
       r.idx++;
       const more = r.idx < r.pages.length
         ? `\n\n➡️ דף ${r.idx} מתוך ${r.pages.length}. כתוב *המשך* לדף הבא.`
@@ -159,7 +160,8 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
       const page = await review.fetchText(reviewUrl).catch(() => ({ title: '', text: '' }));
       if (!(page.text || '').trim()) { await wa.sendText(from, 'לא הצלחתי למשוך תוכן מהאתר — ודא שהקישור ציבורי, או שלח לי צילום מסך של הדף.'); return; }
       convo.review = { url: reviewUrl, pages, idx: 1 };
-      const out = await ai.reviewChunk(brand, reviewUrl, page.text, 1, pages.length, page.title);
+      const shot = await review.shotFromUrl(reviewUrl).catch(() => null);
+      const out = await ai.reviewChunk(brand, reviewUrl, page.text, 1, pages.length, page.title, shot);
       if (pages.length <= 1) convo.review = null;
       convo.history.push({ role: 'assistant', content: out || '' });
       if (convo.history.length > 16) convo.history = convo.history.slice(-16);

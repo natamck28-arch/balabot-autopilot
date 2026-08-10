@@ -96,4 +96,23 @@ async function fetchLinks(url) {
   return links;
 }
 
-module.exports = { extractUrl, fetchText, shotB64, chunkText, fetchLinks };
+
+// Render a URL to a screenshot via ScreenshotOne (needs SCREENSHOT_KEY env). Returns {b64,mime} or null.
+async function shotFromUrl(url) {
+  const key = process.env.SCREENSHOT_KEY;
+  if (!key) return null;
+  const api = 'https://api.screenshotone.com/take?access_key=' + encodeURIComponent(key)
+    + '&url=' + encodeURIComponent(url)
+    + '&format=jpg&viewport_width=1280&full_page=false&block_ads=true&block_cookie_banners=true&cache=true&image_quality=80';
+  try {
+    const r = await fetch(api, { signal: AbortSignal.timeout ? AbortSignal.timeout(22000) : undefined });
+    if (!r.ok) { console.error('screenshot api status', r.status); return null; }
+    const ct = r.headers.get('content-type') || '';
+    if (!ct.startsWith('image/')) return null;
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.length < 3000) return null;
+    return { b64: buf.toString('base64'), mime: ct.includes('png') ? 'image/png' : 'image/jpeg' };
+  } catch (e) { console.error('screenshot failed', e.message); return null; }
+}
+
+module.exports = { extractUrl, fetchText, shotB64, chunkText, fetchLinks, shotFromUrl };
