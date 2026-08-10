@@ -210,7 +210,7 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
     }
 
     // explicit cancel only -> drop the pending post
-    if (/\bבטל\b|תבטל|בטלי|לבטל|מבטל|עזוב|שכח מזה|לא רוצה|לא צריך|תמחק/i.test(t)) {
+    if (/\bבטל\b|תבטל|בטלי|לבטל|מבטל|עזוב|שכח מזה|לא רוצה|לא צריך|תמחק|לא עכשיו|אחר כך|רק הראיתי|רק הצגתי|רק בדיקה|לא להעלות/i.test(t)) {
       convo.state = 'CHATTING'; convo.draft = null;
       store.setConvo(from, convo);
       await wa.sendText(from, 'סבבה, ביטלתי את הפוסט. שלח לי תמונה חדשה מתי שתרצה 😊');
@@ -223,10 +223,16 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
       await sendPreview(from, d, `עודכן 👇\n\n${decision.caption}\n\nענה *כן* לפרסום, או כתוב מה לשנות.`);
       return;
     }
-    // ambiguous / general chat -> answer but DO NOT drop the pending post
-    store.setConvo(from, convo);
+    // ambiguous / general chat -> answer naturally. Remind about the pending post ONCE, then stop (no loop).
     const reply = (decision && decision.reply) || '';
-    await wa.sendText(from, `${reply}${reply ? '\n\n' : ''}📌 התמונה עדיין ממתינה לפרסום — כתוב *כן* לפרסום, מה לשנות, או *בטל* לביטול.`);
+    if (!d.nagged) {
+      d.nagged = true;
+      store.setConvo(from, convo);
+      await wa.sendText(from, `${reply}${reply ? '\n\n' : ''}📌 (התמונה מקודם עדיין שמורה — כתוב *פרסם* כשתרצה להעלות אותה, או *בטל*.)`);
+    } else {
+      store.setConvo(from, convo);
+      await wa.sendText(from, reply || 'סבבה 😊');
+    }
     return;
   }
 
