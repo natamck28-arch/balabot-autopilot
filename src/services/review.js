@@ -62,7 +62,7 @@ function siteLinks(text, base) {
   let host; try { host = new URL(base).hostname; } catch { return []; }
   const urls = new Set();
   for (const m of String(text).matchAll(/href\s*=\s*["']([^"'#]+)["']/gi)) urls.add(m[1]);
-  for (const m of String(text).matchAll(/\((https?:\/\/[^)\s]+)\)/gi)) urls.add(m[1]);
+  for (const m of String(text).matchAll(/\]\(([^)\s#]+)\)/g)) urls.add(m[1]);        // markdown [txt](target) — absolute OR relative (/projects)
   for (const m of String(text).matchAll(/https?:\/\/[^\s"'<>)\]]+/gi)) urls.add(m[0]);
   const junk = /(login|signin|sign-in|register|signup|sign-up|cart|checkout|account|wp-admin|wp-login|privacy|terms|policy|cookie|\/tag\/|\/category\/|feed|rss)/i;
   const seen = new Set(); const out = [];
