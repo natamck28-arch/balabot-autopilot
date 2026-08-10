@@ -156,3 +156,25 @@ router.get('/brain', auth, async (req, res) => {
     res.json({ q, replyLength: (reply || '').length, reply: reply || '(EMPTY -> would fall back)' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// Debug: run the full website-review pipeline and report each step.
+router.get('/review-test', auth, async (req, res) => {
+  const url = req.query.url;
+  const out = { url };
+  if (!url) return res.status(400).json({ error: 'pass ?url=' });
+  try {
+    const review = require('../services/review');
+    const ai = require('../services/ai');
+    let page = { title: '', text: '' };
+    try { page = await review.fetchText(url); } catch (e) { out.fetchErr = e.message; }
+    out.pageTitle = page.title; out.pageTextLen = (page.text || '').length;
+    let shot = null;
+    try { shot = await review.shotB64(url); } catch (e) { out.shotErr = e.message; }
+    out.shotOk = !!shot; if (shot) out.shotBytes = Buffer.from(shot.b64, 'base64').length;
+    const brand = { businessName: 'עסק', businessType: req.query.type || '' };
+    const rev = await ai.reviewSite(brand, url, page, shot);
+    out.reviewLen = (rev || '').length;
+    out.review = rev ? rev.slice(0, 500) : '(EMPTY -> would show error to user)';
+  } catch (e) { out.error = e.message; }
+  res.json(out);
+});
