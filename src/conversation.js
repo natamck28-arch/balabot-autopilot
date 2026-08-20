@@ -3,6 +3,7 @@ const wa = require('./services/whatsapp');
 const ig = require('./services/instagram');
 const fb = require('./services/facebook');
 const images = require('./services/images');
+const audio = require('./services/audio');
 const ai = require('./services/ai');
 const review = require('./services/review');
 
@@ -55,7 +56,7 @@ function previewText(d) {
   return `תצוגה מקדימה של הפוסט${rawTag} 👇\n\n${d.caption}${destLine}\n\nענה *כן* לפרסום · 'סטורי' לסטורי${alt ? ' · ' + alt : ''} · או מה לשנות.`;
 }
 
-async function handleInbound({ from, type, text, imageId, videoId }) {
+async function handleInbound({ from, type, text, imageId, videoId, audioId }) {
   const client = store.getClientByWa(from);
   let convo = store.getConvo(from);
   convo.history = convo.history || [];
@@ -121,6 +122,25 @@ async function handleInbound({ from, type, text, imageId, videoId }) {
       store.setConvo(from, convo);
       await wa.sendText(from, previewText(convo.draft));
     } catch (e) { console.error(e); await wa.sendText(from, "הייתה בעיה עם הסרטון — אפשר לשלוח אותו שוב?"); }
+    return;
+  }
+
+  // ---- inbound AUDIO -> mix analysis ----
+  if (type === 'audio' && audioId) {
+    await wa.sendText(from, 'קיבלתי 🎧 מנתח את המיקס — תדרים, איזון ועוצמה... (רגע)');
+    try {
+      const { buffer } = await wa.downloadMedia(audioId);
+      const m = await audio.analyzeMix(buffer);
+      if (m.pngBuf && m.pngBuf.length) {
+        const url = images.hostPublicly(m.pngBuf, 'png');
+        await wa.sendImageByUrl(from, url, '🎚️ גרף הספקטרום של הקטע');
+      }
+      const out = await ai.analyzeMix(brand, { bands: m.bands, lufs: m.lufs, lra: m.lra, truePeak: m.truePeak, pngB64: m.pngBuf ? m.pngBuf.toString('base64') : null });
+      convo.history.push({ role: 'assistant', content: out || 'ניתוח מיקס' });
+      if (convo.history.length > 16) convo.history = convo.history.slice(-16);
+      store.setConvo(from, convo);
+      await wa.sendText(from, out || 'לא הצלחתי לנתח את הקטע כרגע — נסה שוב.');
+    } catch (e) { console.error('mix analysis error', e.message); await wa.sendText(from, 'לא הצלחתי לנתח את האודיו כרגע — שלח קובץ אודיו/מוזיקה (mp3/wav/וויס).'); }
     return;
   }
 

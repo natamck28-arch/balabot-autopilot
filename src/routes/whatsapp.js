@@ -39,11 +39,15 @@ router.post('/', async (req, res) => {
       await handleInbound({ from, type: 'image', imageId: msg.image.id, text: msg.image.caption });
     } else if (msg.type === 'video') {
       await handleInbound({ from, type: 'video', videoId: msg.video.id, text: msg.video.caption });
+    } else if (msg.type === 'audio') {
+      await handleInbound({ from, type: 'audio', audioId: msg.audio.id });
+    } else if (msg.type === 'document' && /audio|mpeg|wav|ogg|mp3|m4a|aac|flac/i.test(msg.document?.mime_type || '')) {
+      await handleInbound({ from, type: 'audio', audioId: msg.document.id });
     } else if (msg.type === 'interactive') {
       const t = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || '';
       await handleInbound({ from, type: 'text', text: t });
     } else {
-      await wa.sendText(from, "I can work with photos and text. Send me a photo to post!");
+      await wa.sendText(from, "אפשר לשלוח לי תמונה/סרטון לפוסט, קישור לאתר לסקירה, או קובץ אודיו לניתוח מיקס 🙂");
     }
     console.log('  handled OK');
   } catch (e) {

@@ -157,4 +157,23 @@ async function reviewChunk(brand, url, sectionText, pageNum, pageTotal, secNum, 
   return await chat(system, [{ role: 'user', content }], { maxTokens: 1200 });
 }
 
-module.exports = { generateCaption, conversationReply, approvalDecision, reviewSite, reviewChunk };
+
+async function analyzeMix(brand, m) {
+  const b = m.bands || {};
+  const f = (v) => (v == null ? '—' : v.toFixed(1) + ' dB');
+  const data = 'מדדי אנרגיה לפי אזורי תדר (mean, גבוה יותר = חזק יותר):\n'
+    + '• סאב (מתחת 60Hz): ' + f(b.sub) + '\n'
+    + '• באס (60-250Hz): ' + f(b.bass) + '\n'
+    + '• לואו-מיד (250-800Hz): ' + f(b.lowmid) + '\n'
+    + '• מיד (800Hz-2.5kHz): ' + f(b.mid) + '\n'
+    + '• היי-מיד (2.5k-6kHz): ' + f(b.highmid) + '\n'
+    + '• גבוהים (מעל 6kHz): ' + f(b.high) + '\n'
+    + 'עוצמה משולבת (LUFS): ' + (m.lufs == null ? '—' : m.lufs) + ' | טווח דינמי (LRA): ' + (m.lra == null ? '—' : m.lra) + ' LU | True Peak: ' + (m.truePeak == null ? '—' : m.truePeak) + ' dBFS';
+  const system = 'אתה מהנדס מיקס ומאסטרינג מנוסה. קיבלת גרף ספקטרום + מדדי תדרים ועוצמה של קטע מוזיקה, ונותן ניתוח מיקס מקצועי וישים בעברית. כסה: (1) איזון כללי — באס מול מיד מול גבוהים, איפה יותר מדי/מעט; (2) בעיות אם יש — עכירות/mud (200-500Hz), boxy, חוסר גוף בבאס, צרימות/harshness (2-5kHz), חוסר אוויר (מעל 10kHz); (3) המלצות EQ קונקרטיות: תדר מדויק (Hz), לחתוך או להגביר, וכמה dB בערך; (4) עוצמה: לפי ה-LUFS — מתאים לסטרימינג (~-14 LUFS)? True Peak בטוח (מתחת ל-1dB-)?; (5) דינמיקה/קומפרסיה אם רלוונטי. כתוב מסודר בעברית נקייה, בלי כותרות Markdown, תמציתי אך מקצועי. בסס על הנתונים והגרף — אל תמציא.';
+  const content = [];
+  if (m.pngB64) content.push({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: m.pngB64 } });
+  content.push({ type: 'text', text: data + '\n\nנתח את המיקס לפי הגרף והמספרים, ותן פרמטרים קונקרטיים לשיפור.' });
+  return await chat(system, [{ role: 'user', content }], { maxTokens: 1300 });
+}
+
+module.exports = { generateCaption, conversationReply, approvalDecision, reviewSite, reviewChunk, analyzeMix };
